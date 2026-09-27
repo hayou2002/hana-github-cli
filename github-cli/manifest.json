@@ -1,0 +1,14 @@
+{
+  "manifestVersion": 2,
+  "id": "github-cli",
+  "name": "GitHub CLI",
+  "version": "0.1.1",
+  "entry": "index.js",
+  "capabilities": [
+    "app/tools.expose-to-model",
+    "app/process.spawn"
+  ],
+  "icon": "assets/icon.svg",
+  "description": "将官方 GitHub CLI（gh）桥接为 Hana 工具：登录状态诊断、gh 命令安全执行、token/设备码两种登录方式。",
+  "minAppVersion": "0.1050.9"
+}

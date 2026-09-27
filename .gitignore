@@ -1,0 +1,7 @@
+# 打包中间物
+*.tmp
+Thumbs.db
+Desktop.ini
+
+# 本地实验残留
+icon.svg.bak
