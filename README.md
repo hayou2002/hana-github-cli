@@ -27,11 +27,23 @@ App 启动时按 `GH_CLI_PATH` 环境变量 → 平台默认安装路径 → `PA
 
 ## 安装
 
+![安装流程：准备安装包 → 在审批卡片上点「批准并安装」→ 到卡片中心打开管理面板](docs/images/install-flow.svg)
+
 **方式一：安装包（推荐）**
 
 从 [Releases](../../releases) 下载 `app-github-cli-x.y.z.zip`，在 Hana 的扩展管理里选择本地安装，审阅权限后启用。
 
-**方式二：源码目录**
+**方式二：从仓库安装**
+
+在扩展管理的本地安装框里填入仓库链接，宿主会拉取默认分支的源码快照安装：
+
+```
+https://github.com/hayou2002/hana-github-cli
+```
+
+> 注意：这里填的是**仓库链接**（`github.com/owner/repo`），不是 Release 页链接。填 `.../releases/tag/vX.Y.Z` 虽也能装，但宿主只取前两段当仓库地址，抓的仍是源码快照，不会用 Release 里的 zip 资产。想用打包好的 zip，请走方式一。
+
+**方式三：源码目录**
 
 把 `github-cli/` 整个目录复制到 `<HANA_HOME>/apps/`，Hana 会在扩展面板的「应用」分类里列出待批准条目，确认后加载。
 
@@ -86,24 +98,52 @@ App 启动时按 `GH_CLI_PATH` 环境变量 → 平台默认安装路径 → `PA
 
 退出本地登录（`gh auth logout`，只删本地凭据，不吊销远端令牌）。
 
-## 使用示例
+## 使用方法
 
-装好后直接对助手说：
+### 第一次上手（四步）
+
+1. **装应用**：从 [Releases](../../releases) 下载 zip 丢进扩展管理的本地安装框，或用仓库链接安装（见下方「安装」），审阅权限后启用
+2. **装 gh**：打开卡片中心的「GitHub CLI 管理面板」，未安装时点 **一键安装**（约一两分钟）
+3. **登录**：点 **登录** → 左侧出现一次性代码、浏览器自动打开授权页 → 输入代码点 Authorize
+4. **开用**：面板变绿、显示你的账号后，直接对助手说需求即可
+
+### 用法一：面板点按钮（推荐新手）
+
+装好应用后，在卡片中心打开「GitHub CLI 管理面板」：
+
+- **安装段**：显示 gh 是否装好与版本号；未安装时是 **一键安装** 按钮，日志实时回显
+- **账号段（未登录）**：点 **登录** → 左侧出现可复制的 `XXXX-XXXX` 代码，浏览器自动打开授权页；把代码填进去、点 Authorize，面板会在几秒内自动变成已登录
+- **账号段（已登录）**：显示 `账号 @ 主机 · 协议 · scope`，按钮变成 **退出登录**（带二次确认）
+- **刷新**：手动重读状态；安装中或等待授权时面板会自动轮询
+
+### 用法二：对话让助手调工具（适合批处理）
+
+不用点面板，直接说需求，助手会自行选择工具：
 
 > 「看看我的 GitHub 登录状态」
 > 「列出我最近的 20 个仓库」
 > 「给 owner/repo 提一个 issue，标题是……」
-> 「用 gh 登录我的 GitHub」
+> 「把本地的 hana-github-cli 仓库推送上去」
+> 「退出我的 GitHub 登录」
 
-助手会自行选择合适的工具完成。
+写操作（建仓 / 合并 PR / 删除等）助手会先把完整参数报给你，确认后才执行。
+
+### 面板 vs 对话，怎么选
+
+| 场景 | 用哪个 |
+|---|---|
+| 装软件、登录、退出这类一次性设置 | 面板（看得见、可点、有状态） |
+| 批量查仓库 / PR / issue，或要串起后续动作 | 对话（助手能接着做下一步） |
+| 要执行写操作 | 对话（有参数确认环节，也更方便追述） |
 
 ## 项目结构
 
 ```
 ├── github-cli/            # App 源码（可直接放入 <HANA_HOME>/apps/）
-│   ├── manifest.json      # v2 清单
-│   ├── index.js           # 三个工具的注册与实现
+│   ├── manifest.json      # v2 清单（工具 + 管理面板卡片）
+│   ├── index.js           # 五个工具 + 面板后端路由
 │   ├── assets/icon.svg    # 应用图标（Octocat 风格重绘）
+│   ├── ui/                # 管理面板卡片（panel.html + 样式/脚本）
 │   └── sdk/               # 本地打包的 Hana App SDK（运行时免依赖）
 ├── dist-extensions/       # 打包产物：安装 ZIP + 市场 entry.json
 ├── CHANGELOG.md
@@ -112,19 +152,23 @@ App 启动时按 `GH_CLI_PATH` 环境变量 → 平台默认安装路径 → `PA
 
 ## 开发
 
-修改 `github-cli/index.js` 后，用 [hana-app-creator](../../) 技能链校验打包：
+修改 `github-cli/index.js` 或 `ui/` 后，用 hana-app-creator 技能链校验打包：
 
 ```bash
-node scripts/validate_app.mjs --dir github-cli --smoke   # 静态校验 + 冒烟启动
+# 静态校验（清单、资源、路由）+ 打包校验
+node scripts/validate_app.mjs --dir github-cli --json
 node scripts/pack_app.mjs --dir github-cli --publisher "你的名字" --out ./dist-extensions
-node scripts/validate_app.mjs --archive dist-extensions/app-github-cli-x.y.z.zip --smoke
+node scripts/validate_app.mjs --archive dist-extensions/app-github-cli-x.y.z.zip --json
 ```
+
+> 带 `--smoke` 的 UI 冒烟校验需要独立 Electron 运行时（`HANA_APP_ELECTRON`）；未配置时跳过该步，静态校验与打包校验不受影响。
 
 ## 已知限制
 
 - `gh` 的交互式 TUI（如 `gh pr create` 向导）不适合本桥接，请使用带完整 flag 的非交互写法
 - 输出超过 60K 字符会截断，大数据量请配合 `--jq` 过滤或 `--limit` 控制
-- 设备码授权等待窗口约 15 分钟，超时需重新发起
+- 设备码授权等待窗口约 15 分钟，超时需重新发起；面板轮询依赖应用保持加载
+- 一键安装依赖系统包管理器（winget / brew），过程中可能弹系统权限确认
 - 本 App 为社区作品，与 GitHub 官方无隶属关系；图标为 Octocat 风格自绘
 
 ## 更新日志

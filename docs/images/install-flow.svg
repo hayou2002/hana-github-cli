@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1240 600" width="1240" height="600" role="img" aria-label="GitHub CLI App 安装流程：准备安装包 → 确认审批卡片 → 启用使用">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fdfaf6"/>
+      <stop offset="1" stop-color="#f6ede2"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="6" flood-color="#5a4632" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect width="1240" height="600" fill="url(#bg)"/>
+
+  <text x="48" y="62" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="26" font-weight="600" fill="#2f2a24">GitHub CLI App · 安装到 Hana</text>
+  <text x="48" y="90" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="15" fill="#8d8274">三步：准备安装包 → 在审批卡片上点「批准」→ 到卡片中心使用</text>
+
+  <!-- ============ 步骤 1 ============ -->
+  <g transform="translate(48 128)">
+    <text x="0" y="0" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="13" font-weight="600" fill="#c2703d">步骤 1</text>
+    <text x="62" y="0" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="14" fill="#6f6659">准备安装包</text>
+
+    <rect x="0" y="18" width="340" height="380" rx="16" fill="#ffffff" stroke="#e8dccc" filter="url(#soft)"/>
+
+    <!-- 拖拽区 -->
+    <rect x="24" y="44" width="292" height="150" rx="12" fill="#fdf8f1" stroke="#d9c6ae" stroke-width="1.5" stroke-dasharray="7 6"/>
+    <g transform="translate(150 96)">
+      <path d="M0 34 L0 10 M-11 21 L0 10 L11 21" stroke="#c2703d" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <text x="170" y="152" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="14" font-weight="600" fill="#2f2a24">拖入 app-github-cli.zip</text>
+    <text x="170" y="174" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" fill="#8d8274">或点击浏览选择文件</text>
+
+    <text x="24" y="222" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" fill="#a89c8c">— 也可以填仓库链接 —</text>
+
+    <rect x="24" y="234" width="292" height="42" rx="10" fill="#faf6f0" stroke="#e2d5c4"/>
+    <text x="38" y="260" font-family="ui-monospace, Consolas, monospace" font-size="12.5" fill="#6f6659">https://github.com/owner/repo</text>
+    <rect x="24" y="288" width="120" height="36" rx="9" fill="#c2703d"/>
+    <text x="84" y="311" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="13" font-weight="600" fill="#ffffff">安装</text>
+
+    <text x="24" y="352" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12" fill="#8d8274">支持 App 与旧版插件包，自动识别</text>
+
+    <!-- 指纹 -->
+    <rect x="24" y="364" width="292" height="1" fill="#f0e6d8"/>
+    <text x="24" y="384" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12" fill="#a89c8c">安装包来源：Releases 下载的 zip，</text>
+  </g>
+
+  <!-- 箭头 1 -->
+  <g transform="translate(400 300)">
+    <path d="M0 0 L34 0" stroke="#d9c6ae" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M28 -7 L38 0 L28 7 Z" fill="#d9c6ae"/>
+  </g>
+
+  <!-- ============ 步骤 2：审批卡片（重点） ============ -->
+  <g transform="translate(452 128)">
+    <text x="0" y="0" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="13" font-weight="600" fill="#c2703d">步骤 2</text>
+    <text x="62" y="0" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="14" fill="#6f6659">在审批卡片上确认权限</text>
+
+    <!-- 卡片本体 -->
+    <rect x="0" y="18" width="392" height="380" rx="16" fill="#ffffff" stroke="#e8dccc" filter="url(#soft)"/>
+
+    <!-- 卡片头 -->
+    <rect x="0" y="18" width="392" height="34" rx="16" fill="#f7f0e6"/>
+    <rect x="0" y="36" width="392" height="16" fill="#f7f0e6"/>
+    <circle cx="18" cy="35" r="4.5" fill="#dcc9b0"/>
+    <circle cx="34" cy="35" r="4.5" fill="#dcc9b0"/>
+    <text x="196" y="40" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12" fill="#a89c8c">安装确认</text>
+
+    <!-- 图标 + 名称 -->
+    <g transform="translate(24 74)">
+      <rect x="0" y="0" width="52" height="52" rx="13" fill="#fff" stroke="#e8dccc"/>
+      <g transform="translate(12 12) scale(1.75)">
+        <path fill="#2f2a24" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63 0 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+      </g>
+    </g>
+    <text x="90" y="98" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="17" font-weight="600" fill="#2f2a24">GitHub CLI</text>
+    <text x="90" y="120" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" fill="#8d8274">v0.2.0  ·  发布者 快乐小猫</text>
+
+    <text x="24" y="152" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" font-weight="600" fill="#6f6659">将获得以下权限</text>
+
+    <!-- 权限清单 -->
+    <g font-family="ui-monospace, Consolas, monospace" font-size="11.5" fill="#8d8274">
+      <circle cx="31" cy="173" r="7" fill="#e9f3ec"/>
+      <path d="M27.5 173 l2.6 2.6 l4.2 -5.2" stroke="#3d9a63" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="46" y="177">app/tools.expose-to-model</text>
+
+      <circle cx="31" cy="197" r="7" fill="#e9f3ec"/>
+      <path d="M27.5 197 l2.6 2.6 l4.2 -5.2" stroke="#3d9a63" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="46" y="201">app/process.spawn</text>
+
+      <circle cx="31" cy="221" r="7" fill="#e9f3ec"/>
+      <path d="M27.5 221 l2.6 2.6 l4.2 -5.2" stroke="#3d9a63" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="46" y="225">app/ui.clipboard-write</text>
+
+      <circle cx="31" cy="245" r="7" fill="#e9f3ec"/>
+      <path d="M27.5 245 l2.6 2.6 l4.2 -5.2" stroke="#3d9a63" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="46" y="249">app/ui.open-external</text>
+    </g>
+
+    <text x="24" y="284" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11.5" fill="#a89c8c">读操作不额外授权；写操作执行前向你确认</text>
+
+    <!-- 按钮区 -->
+    <rect x="24" y="306" width="150" height="42" rx="10" fill="#faf6f0" stroke="#e2d5c4"/>
+    <text x="99" y="332" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="13.5" fill="#8d8274">取消</text>
+
+    <rect x="188" y="306" width="180" height="42" rx="10" fill="#c2703d"/>
+    <text x="278" y="332" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="13.5" font-weight="600" fill="#ffffff">批准并安装</text>
+
+    <!-- 高亮标注 -->
+    <rect x="182" y="300" width="192" height="54" rx="13" fill="none" stroke="#d9534f" stroke-width="2.5" stroke-dasharray="6 5"/>
+    <g transform="translate(392 268)">
+      <path d="M0 0 C-18 0 -30 10 -34 26" stroke="#d9534f" stroke-width="2" fill="none" stroke-linecap="round"/>
+      <path d="M-38 22 L-33 21 L-35 30" fill="#d9534f"/>
+    </g>
+    <text x="392" y="256" text-anchor="end" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="13" font-weight="600" fill="#d9534f">点这里</text>
+  </g>
+
+  <!-- 箭头 2 -->
+  <g transform="translate(852 300)">
+    <path d="M0 0 L34 0" stroke="#d9c6ae" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M28 -7 L38 0 L28 7 Z" fill="#d9c6ae"/>
+  </g>
+
+  <!-- ============ 步骤 3 ============ -->
+  <g transform="translate(904 128)">
+    <text x="0" y="0" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="13" font-weight="600" fill="#c2703d">步骤 3</text>
+    <text x="62" y="0" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="14" fill="#6f6659">启用后打开管理面板</text>
+
+    <rect x="0" y="18" width="288" height="380" rx="16" fill="#ffffff" stroke="#e8dccc" filter="url(#soft)"/>
+
+    <text x="20" y="52" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12" fill="#a89c8c">扩展 · 已安装</text>
+
+    <!-- 已安装行 -->
+    <rect x="16" y="64" width="256" height="60" rx="12" fill="#fdf8f1" stroke="#e8dccc"/>
+    <rect x="30" y="78" width="32" height="32" rx="8" fill="#fff" stroke="#e8dccc"/>
+    <g transform="translate(37 85) scale(1.1)">
+      <path fill="#2f2a24" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63 0 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+    </g>
+    <text x="72" y="90" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="13.5" font-weight="600" fill="#2f2a24">GitHub CLI</text>
+    <text x="72" y="109" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11.5" fill="#3d9a63">已安装 · v0.2.0</text>
+
+    <!-- 面板示意图 -->
+    <text x="20" y="156" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12" fill="#a89c8c">卡片中心 · 管理面板</text>
+    <rect x="16" y="168" width="256" height="212" rx="12" fill="#fdf8f1" stroke="#e8dccc"/>
+
+    <circle cx="34" cy="190" r="4.5" fill="#3d9a63"/>
+    <text x="46" y="194" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" font-weight="600" fill="#2f2a24">GitHub CLI</text>
+    <text x="206" y="194" text-anchor="end" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11" fill="#a89c8c">刷新</text>
+
+    <rect x="28" y="206" width="232" height="46" rx="9" fill="#fff" stroke="#eee2d2"/>
+    <text x="40" y="226" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11.5" font-weight="600" fill="#2f2a24">命令行工具 gh</text>
+    <text x="40" y="243" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11" fill="#8d8274">已安装 · 2.101.0</text>
+
+    <rect x="28" y="262" width="232" height="46" rx="9" fill="#fff" stroke="#eee2d2"/>
+    <text x="40" y="282" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11.5" font-weight="600" fill="#2f2a24">GitHub 账号</text>
+    <text x="40" y="299" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11" fill="#3d9a63">hayou2002 @ github.com</text>
+
+    <rect x="28" y="318" width="232" height="1" fill="#f0e6d8"/>
+    <text x="28" y="342" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11.5" fill="#c2703d">下一步：让助手跑 gh 命令，或点「登录」</text>
+  </g>
+</svg>
