@@ -1,30 +1,125 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" width="640" height="360" role="img" aria-label="GitHub CLI 管理面板封面">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" width="960" height="600" role="img" aria-label="GitHub CLI 管理面板封面：gh 终端与状态面板">
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#fdf8f1"/>
-      <stop offset="1" stop-color="#f2e4d4"/>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fdfaf6"/>
+      <stop offset="0.55" stop-color="#f8efe3"/>
+      <stop offset="1" stop-color="#f1e2d0"/>
     </linearGradient>
+    <linearGradient id="term" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f2a24"/>
+      <stop offset="1" stop-color="#241f1a"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#d98a4f"/>
+      <stop offset="1" stop-color="#b9603a"/>
+    </linearGradient>
+    <filter id="soft" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="6" stdDeviation="14" flood-color="#5a4632" flood-opacity="0.16"/>
+    </filter>
+    <filter id="soft2" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="8" flood-color="#5a4632" flood-opacity="0.10"/>
+    </filter>
   </defs>
-  <rect width="640" height="360" fill="url(#g)"/>
-  <circle cx="556" cy="70" r="120" fill="#c2703d" opacity="0.07"/>
-  <circle cx="86" cy="318" r="96" fill="#c2703d" opacity="0.05"/>
 
-  <g transform="translate(56 92)">
-    <rect x="0" y="0" width="88" height="88" rx="22" fill="#ffffff" stroke="#e6d7c6"/>
-    <g transform="translate(20 20) scale(3)">
+  <rect width="960" height="600" fill="url(#bg)"/>
+  <!-- 装饰圆 -->
+  <circle cx="852" cy="96" r="150" fill="#c2703d" opacity="0.06"/>
+  <circle cx="108" cy="536" r="118" fill="#c2703d" opacity="0.05"/>
+  <g opacity="0.05" fill="#2f2a24">
+    <circle cx="640" cy="470" r="3"/><circle cx="672" cy="470" r="3"/><circle cx="704" cy="470" r="3"/>
+  </g>
+
+  <!-- 标题区 -->
+  <g transform="translate(56 62)">
+    <rect x="0" y="0" width="46" height="46" rx="13" fill="#ffffff" stroke="#e8dccc" filter="url(#soft2)"/>
+    <g transform="translate(11 11) scale(1.5)">
       <path fill="#2f2a24" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63 0 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+    </g>
+    <text x="62" y="24" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="27" font-weight="700" fill="#2f2a24">GitHub CLI</text>
+    <text x="62" y="47" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="14" fill="#8d8274">Hana 应用 · 安装 / 登录 / 状态 / 命令桥接</text>
+  </g>
+
+  <!-- 终端窗口 -->
+  <g transform="translate(56 160)" filter="url(#soft)">
+    <rect x="0" y="0" width="500" height="286" rx="16" fill="url(#term)"/>
+    <!-- 标题栏 -->
+    <rect x="0" y="0" width="500" height="40" rx="16" fill="#3a332b"/>
+    <rect x="0" y="24" width="500" height="16" fill="#3a332b"/>
+    <circle cx="24" cy="20" r="5.5" fill="#7a6a58"/>
+    <circle cx="44" cy="20" r="5.5" fill="#8a7a66"/>
+    <circle cx="64" cy="20" r="5.5" fill="#9a8a74"/>
+    <text x="250" y="25" text-anchor="middle" font-family="ui-monospace, Consolas, monospace" font-size="11.5" fill="#a89c8c">gh · github.com</text>
+
+    <g font-family="ui-monospace, 'Cascadia Mono', Consolas, monospace" font-size="13">
+      <text x="24" y="76" fill="#8fbf9a">$</text>
+      <text x="42" y="76" fill="#e8e0d4">gh auth status</text>
+
+      <text x="24" y="104" fill="#9a8f7f">github.com</text>
+      <text x="24" y="126" fill="#7fc48f">✓</text>
+      <text x="42" y="126" fill="#cfc6b8">Logged in to github.com account</text>
+      <text x="42" y="148" fill="#e0b378">hayou2002</text>
+      <text x="150" y="148" fill="#9a8f7f">(keyring)</text>
+
+      <text x="24" y="182" fill="#8fbf9a">$</text>
+      <text x="42" y="182" fill="#e8e0d4">gh repo list --limit 3</text>
+
+      <text x="24" y="210" fill="#cfc6b8">hayou2002/hana-github-cli</text>
+      <text x="300" y="210" fill="#9a8f7f">public</text>
+      <text x="24" y="232" fill="#cfc6b8">hayou2002/newapi-manager</text>
+      <text x="300" y="232" fill="#9a8f7f">private</text>
+      <text x="24" y="254" fill="#cfc6b8">hayou2002/price-atlas</text>
+      <text x="300" y="254" fill="#9a8f7f">public</text>
+
+      <text x="24" y="276" fill="#8fbf9a">$</text>
+      <rect x="42" y="266" width="9" height="15" fill="#d98a4f">
+        <animate attributeName="opacity" values="1;0.15;1" dur="1.15s" repeatCount="indefinite"/>
+      </rect>
     </g>
   </g>
 
-  <text x="168" y="128" font-family="'Segoe UI', system-ui, sans-serif" font-size="34" font-weight="600" fill="#2f2a24">GitHub CLI</text>
-  <text x="168" y="164" font-family="'Segoe UI', system-ui, sans-serif" font-size="17" fill="#8d8274">安装 · 登录 · 状态 · 命令桥接</text>
+  <!-- 状态面板 -->
+  <g transform="translate(596 160)" filter="url(#soft)">
+    <rect x="0" y="0" width="308" height="286" rx="16" fill="#ffffff" stroke="#eadfce"/>
 
-  <g font-family="'Segoe UI', system-ui, sans-serif" font-size="14" fill="#6f6659">
-    <rect x="56" y="224" width="164" height="40" rx="12" fill="#ffffff" stroke="#e6d7c6"/>
-    <text x="76" y="249">winget install</text>
-    <rect x="234" y="224" width="132" height="40" rx="12" fill="#ffffff" stroke="#e6d7c6"/>
-    <text x="254" y="249">设备码登录</text>
-    <rect x="380" y="224" width="112" height="40" rx="12" fill="#ffffff" stroke="#e6d7c6"/>
-    <text x="400" y="249">gh auth</text>
+    <circle cx="28" cy="34" r="5.5" fill="#3d9a63"/>
+    <text x="44" y="39" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="14" font-weight="700" fill="#2f2a24">GitHub CLI</text>
+    <text x="280" y="39" text-anchor="end" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11" fill="#a89c8c">刷新</text>
+
+    <rect x="20" y="56" width="268" height="72" rx="11" fill="#fdf8f1" stroke="#efe3d2"/>
+    <text x="36" y="80" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" font-weight="600" fill="#2f2a24">命令行工具 gh</text>
+    <g transform="translate(36 92)">
+      <rect x="0" y="0" width="58" height="20" rx="10" fill="#e9f3ec"/>
+      <text x="29" y="14" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="11" fill="#3d9a63">已安装</text>
+    </g>
+    <text x="104" y="106" font-family="ui-monospace, Consolas, monospace" font-size="11" fill="#8d8274">2.101.0</text>
+
+    <rect x="20" y="138" width="268" height="72" rx="11" fill="#fdf8f1" stroke="#efe3d2"/>
+    <text x="36" y="162" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" font-weight="600" fill="#2f2a24">GitHub 账号</text>
+    <text x="36" y="184" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12" fill="#3d9a63">hayou2002 @ github.com</text>
+    <text x="36" y="201" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="10.5" fill="#a89c8c">repo · read:org · gist</text>
+
+    <rect x="20" y="224" width="130" height="42" rx="11" fill="#faf6f0" stroke="#e2d5c4"/>
+    <text x="85" y="250" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" fill="#8d8274">退出登录</text>
+
+    <rect x="158" y="224" width="130" height="42" rx="11" fill="url(#accent)"/>
+    <text x="223" y="250" text-anchor="middle" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" font-weight="600" fill="#ffffff">一键安装</text>
+  </g>
+
+  <!-- 底部特性条 -->
+  <g transform="translate(56 486)" font-family="'Segoe UI', 'Microsoft YaHei', system-ui, sans-serif" font-size="12.5" fill="#6f6659">
+    <rect x="0" y="0" width="176" height="38" rx="19" fill="#ffffff" stroke="#eadfce"/>
+    <text x="88" y="24" text-anchor="middle">设备码登录</text>
+
+    <rect x="190" y="0" width="176" height="38" rx="19" fill="#ffffff" stroke="#eadfce"/>
+    <text x="278" y="24" text-anchor="middle">令牌零经手</text>
+
+    <rect x="380" y="0" width="176" height="38" rx="19" fill="#ffffff" stroke="#eadfce"/>
+    <text x="468" y="24" text-anchor="middle">GitHub 直连</text>
+
+    <rect x="570" y="0" width="176" height="38" rx="19" fill="#ffffff" stroke="#eadfce"/>
+    <text x="658" y="24" text-anchor="middle">无 shell 展开</text>
+
+    <rect x="760" y="0" width="144" height="38" rx="19" fill="url(#accent)"/>
+    <text x="832" y="24" text-anchor="middle" font-weight="600" fill="#ffffff">Hana v2 App</text>
   </g>
 </svg>

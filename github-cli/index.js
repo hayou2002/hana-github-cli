@@ -1,22 +1,53 @@
 // GitHub CLI App — 把官方 gh 命令桥接为 Hana 工具，并提供一枚管理面板卡片。
-// 设计对齐 jimeng-cli：清单声明 app/process.spawn，实体命令走 execFile（无 shell 展开）。
-// v0.2.0 起新增：管理面板（contributes.cards + sdk.routes）与安装/退出工具。
+//
+// 结构：
+//   常量 → 环境与路径 → 进程执行 → 状态读取 → 设备码流程 → 安装管理 → 工具注册 → 面板路由
+// 约定：所有子进程都走 cleanEnv()（GitHub 直连，剔除残留代理变量）、无 shell 展开。
 import { execFile, spawn } from "node:child_process";
 import { promisify } from "node:util";
 import path from "node:path";
 
 const execFileAsync = promisify(execFile);
 
-const VERSION = "0.2.1";
-const DEFAULT_TIMEOUT_MS = 60_000;
-const MAX_TIMEOUT_MS = 180_000;
-const MAX_OUTPUT_CHARS = 60_000;
-const GH_DOWNLOAD_URL = "https://github.com/cli/cli/releases/latest";
-const DEVICE_URL = "https://github.com/login/device";
+// ---------------------------------------------------------------- 常量
 
-// GitHub 直连原则（用户明确）：Hana 进程树可能残留陈旧的 SOCKS/HTTP 代理环境变量，
-// 它们会把子进程的 GitHub 请求坑死。起 gh 子进程前统一清除。
-const PROXY_ENV_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "WS_PROXY", "WSS_PROXY", "ALL_PROXY", "all_proxy"];
+const VERSION = "0.2.2";
+const APP_ID = "github-cli";
+const GH_HOST = "github.com";
+const DEVICE_URL = "https://github.com/login/device";
+const GH_DOWNLOAD_URL = "https://github.com/cli/cli/releases/latest";
+
+const TIMEOUT = {
+  probe: 15_000,
+  status: 30_000,
+  run: 60_000,
+  runMax: 180_000,
+  install: 15 * 60_000,
+  login: 30_000,
+  deviceCode: 25_000,
+};
+
+const MAX_OUTPUT_CHARS = 60_000;
+const MAX_BUFFER = 16 * 1024 * 1024;
+
+const MISSING_HINT =
+  "未检测到 GitHub CLI（gh）。可调用 github_cli_install 自动安装，或在终端执行：winget install --id GitHub.cli";
+
+// GitHub 直连原则：Hana 进程树可能残留陈旧 SOCKS/HTTP 代理变量，会把子进程的
+// GitHub 请求坑死。起 gh 子进程前统一清除。
+const PROXY_ENV_KEYS = [
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "WS_PROXY",
+  "WSS_PROXY",
+  "ALL_PROXY",
+  "all_proxy",
+];
+
+// ---------------------------------------------------------------- 环境与路径
+
 function cleanEnv(base = process.env) {
   const env = { __proto__: null, ...base };
   for (const key of PROXY_ENV_KEYS) delete env[key];
@@ -42,109 +73,128 @@ function ghExecutableCandidates() {
 function clip(text) {
   const value = String(text ?? "");
   if (value.length <= MAX_OUTPUT_CHARS) return value;
-  const head = value.slice(0, MAX_OUTPUT_CHARS);
-  return `${head}\n\n[输出已截断：共 ${value.length} 字符，保留前 ${MAX_OUTPUT_CHARS} 字符。可用 --jq/--limit 收窄结果。]`;
+  return `${value.slice(0, MAX_OUTPUT_CHARS)}\n\n[输出已截断：共 ${value.length} 字符，保留前 ${MAX_OUTPUT_CHARS} 字符。可用 --jq/--limit 收窄结果。]`;
 }
 
-function failurePayload(message, hint) {
-  return {
-    content: [{ type: "text", text: hint ? `${message}\n提示：${hint}` : message }],
-    isError: true,
-  };
-}
-
-function textPayload(text) {
-  return { content: [{ type: "text", text }] };
-}
-
-/** Best-effort: open a URL in the OS default browser. Never throws. */
+/** Best-effort 调用系统默认浏览器打开 URL；永不抛错。 */
 function openInBrowser(url) {
+  const commands = {
+    win32: ["cmd", ["/c", "start", "", url]],
+    darwin: ["open", [url]],
+  };
+  const [cmd, argv] = commands[process.platform] ?? ["xdg-open", [url]];
   try {
-    if (process.platform === "win32") {
-      spawn("cmd", ["/c", "start", "", url], { shell: false, detached: true, stdio: "ignore", env: cleanEnv() }).unref();
-    } else if (process.platform === "darwin") {
-      spawn("open", [url], { shell: false, detached: true, stdio: "ignore", env: cleanEnv() }).unref();
-    } else {
-      spawn("xdg-open", [url], { shell: false, detached: true, stdio: "ignore", env: cleanEnv() }).unref();
-    }
+    spawn(cmd, argv, { shell: false, detached: true, stdio: "ignore", env: cleanEnv() }).unref();
     return true;
   } catch {
     return false;
   }
 }
 
-export const name = "github-cli";
+// ---------------------------------------------------------------- 结果封装
+
+const text = (body) => ({ content: [{ type: "text", text: body }] });
+
+function fail(message, hint) {
+  return {
+    content: [{ type: "text", text: hint ? `${message}\n提示：${hint}` : message }],
+    isError: true,
+  };
+}
+
+function combine(...parts) {
+  return parts.filter(Boolean).join("\n");
+}
+
+// ---------------------------------------------------------------- 进程执行
+
+export const name = APP_ID;
 
 import { defineApp } from "./sdk/app-contract/server-client.js";
 
 export default defineApp(async (sdk) => {
-  await sdk.logger.info(`github-cli ${VERSION} loaded`);
+  await sdk.logger.info(`${APP_ID} ${VERSION} loaded`);
 
-  const MISSING_HINT = "未检测到 GitHub CLI（gh）。可调用 github_cli_install 自动安装，或在终端执行：winget install --id GitHub.cli";
+  let ghPath = null; // gh 可执行文件路径缓存
 
-  let cachedExecutable = null;
-
-  async function resolveGh() {
-    if (cachedExecutable) return cachedExecutable;
-    const candidates = ghExecutableCandidates();
+  /** 统一的子进程执行器：拒绝 shell 展开，统一超时/缓冲/环境。 */
+  async function run(command, argv, { timeoutMs = TIMEOUT.run, cwd } = {}) {
     try {
-      const info = await sdk.process.resolveExecutable({ candidates });
-      if (info?.path) {
-        cachedExecutable = info.path;
-        return cachedExecutable;
-      }
-    } catch {
-      // 宿主解析失败时退回候选名直接执行，由 spawn 错误兜底。
-    }
-    cachedExecutable = candidates[candidates.length - 1];
-    return cachedExecutable;
-  }
-
-  async function runGh(args, { timeoutMs = DEFAULT_TIMEOUT_MS } = {}) {
-    const command = await resolveGh();
-    try {
-      const { stdout, stderr } = await execFileAsync(command, args, {
+      const { stdout, stderr } = await execFileAsync(command, argv, {
         shell: false,
         timeout: timeoutMs,
-        maxBuffer: 16 * 1024 * 1024,
+        maxBuffer: MAX_BUFFER,
         env: cleanEnv(),
+        ...(cwd ? { cwd: String(cwd) } : {}),
       });
       return { ok: true, stdout: clip(stdout), stderr: clip(stderr) };
     } catch (error) {
-      if (error?.code === "ENOENT") {
-        cachedExecutable = null;
-        return { ok: false, missing: true };
-      }
-      const stdout = clip(error?.stdout ?? "");
-      const stderr = clip(error?.stderr ?? "");
-      const status = error?.killed ? "命令超时被终止" : `gh 退出码 ${error?.code ?? error?.signal ?? "未知"}`;
-      return { ok: false, failed: true, status, stdout, stderr, message: String(error?.message ?? error) };
+      if (error?.code === "ENOENT") return { ok: false, enoent: true };
+      return {
+        ok: false,
+        killed: !!error?.killed,
+        code: error?.code ?? error?.signal,
+        stdout: clip(error?.stdout ?? ""),
+        stderr: clip(error?.stderr ?? ""),
+        message: error?.message ? String(error.message) : "",
+      };
     }
   }
 
-  /** 一次拿到「gh 是否可用 + 版本 + 登录账号」。面板与 status 工具共用。 */
-  async function readEnvironment() {
-    const version = await runGh(["--version"], { timeoutMs: 15_000 });
-    if (version.missing || !version.ok) {
-      return { installed: false, version: null, loggedIn: false, account: null };
+  /** 解析 gh 可执行文件（缓存），找不到时回退到裸命令名由执行错误兜底。 */
+  async function resolveGh() {
+    if (ghPath) return ghPath;
+    const candidates = ghExecutableCandidates();
+    try {
+      const info = await sdk.process.resolveExecutable({ candidates });
+      ghPath = info?.path || candidates.at(-1);
+    } catch {
+      ghPath = candidates.at(-1);
     }
+    return ghPath;
+  }
+
+  /** 执行 gh 子命令。 */
+  async function gh(argv, options = {}) {
+    const result = await run(await resolveGh(), argv, options);
+    if (result.enoent) ghPath = null; // 下次重新探测
+    return result;
+  }
+
+  /** 失败结果转成人类可读的一行摘要。 */
+  function describe(result) {
+    if (result.killed) return "超时被终止";
+    return `退出码 ${result.code ?? "未知"}`;
+  }
+
+  // ---------------------------------------------------------------- 状态读取
+
+  /** 一次性读取「是否安装 + 版本 + 登录账号」。 */
+  async function readEnvironment() {
+    const version = await gh(["--version"], { timeoutMs: TIMEOUT.probe });
+    if (!version.ok) return { installed: false, version: null, loggedIn: false, account: null };
+
     const firstLine = (version.stdout || "").split("\n")[0] || "";
-    const auth = await runGh(["auth", "status", "--json", "hosts"], { timeoutMs: 30_000 });
+    const auth = await gh(["auth", "status", "--json", "hosts"], { timeoutMs: TIMEOUT.status });
+
     let hosts = {};
     try {
       hosts = JSON.parse(auth.stdout || "{}").hosts || {};
     } catch {
       hosts = {};
     }
-    const accounts = Object.values(hosts).flat().filter((a) => a && a.state === "success");
+    const accounts = Object.values(hosts)
+      .flat()
+      .filter((a) => a && a.state === "success");
     const account = accounts.find((a) => a.active) || accounts[0] || null;
+
     return {
       installed: true,
       version: firstLine.replace(/^gh version\s*/i, "").trim() || firstLine,
       loggedIn: !!account,
       account: account
         ? {
-            host: account.host || "github.com",
+            host: account.host || GH_HOST,
             login: account.login || "",
             scopes: account.scopes || "",
             tokenSource: account.tokenSource || "",
@@ -154,69 +204,38 @@ export default defineApp(async (sdk) => {
     };
   }
 
-  // ---- 安装状态（面板轮询用） ----
-  let installState = { running: false, done: false, error: null, log: "", startedAt: null };
+  // ---------------------------------------------------------------- 设备码登录流程
 
-  async function installGhCli() {
-    if (installState.running) return installState;
-    installState = { running: true, done: false, error: null, log: "", startedAt: Date.now() };
-    const args =
-      process.platform === "win32"
-        ? ["install", "--id", "GitHub.cli", "--accept-source-agreements", "--accept-package-agreements", "--silent"]
-        : ["--version"];
-    const command = process.platform === "win32" ? "winget" : "brew";
-    const finalArgs = process.platform === "win32" ? args : ["install", "gh"];
-    try {
-      const { stdout, stderr } = await execFileAsync(command, finalArgs, {
-        shell: false,
-        timeout: 15 * 60_000,
-        maxBuffer: 16 * 1024 * 1024,
-        env: cleanEnv(),
-      });
-      // 装完清掉缓存，下次 resolveGh 重新探测
-      cachedExecutable = null;
-      const ok = /successfully installed|已成功安装/i.test(`${stdout}\n${stderr}`) || (await runGh(["--version"], { timeoutMs: 15_000 })).ok;
-      installState = {
-        running: false,
-        done: true,
-        error: ok ? null : "安装命令结束但未检测到 gh，请查看日志",
-        log: clip([stdout, stderr].filter(Boolean).join("\n")) || "（无输出）",
-        startedAt: installState.startedAt,
-      };
-    } catch (error) {
-      const log = clip([error?.stdout, error?.stderr].filter(Boolean).join("\n") || String(error?.message ?? error));
-      installState = {
-        running: false,
-        done: true,
-        error: `安装失败：${error?.message ?? error}`,
-        log,
-        startedAt: installState.startedAt,
-      };
-    }
-    return installState;
-  }
-
-  // ---- 设备码登录流程（面板与 login 工具共用；进程必须存活到授权完成） ----
-  let deviceFlow = null; // { code, url, startedAt, child, error }
+  // 关键：拿到码后进程必须存活并持续轮询，否则接不住用户的授权动作。
+  let deviceFlow = null; // { code, url, startedAt, closedAt }
 
   async function startDeviceFlow({ openBrowser = false } = {}) {
-    const command = await resolveGh();
-    const child = spawn(command, ["auth", "login", "--hostname", "github.com", "--git-protocol", "https", "--web"], {
-      shell: false,
-      stdio: ["ignore", "pipe", "pipe"],
-      env: cleanEnv(),
-    });
+    const existing = activeDeviceFlow();
+    if (existing) {
+      if (openBrowser) openInBrowser(DEVICE_URL);
+      return existing;
+    }
+
+    const flow = { code: null, url: DEVICE_URL, startedAt: Date.now(), closedAt: null };
+    const child = spawn(
+      await resolveGh(),
+      ["auth", "login", "--hostname", GH_HOST, "--git-protocol", "https", "--web"],
+      { shell: false, stdio: ["ignore", "pipe", "pipe"], env: cleanEnv() },
+    );
+
     let buffer = "";
     child.stdout.on("data", (d) => (buffer += d));
     child.stderr.on("data", (d) => (buffer += d));
+    // 只关闭本次流程对象，避免旧流程的回调误标新流程
     child.on("close", () => {
-      cachedExecutable = null;
-      if (deviceFlow && deviceFlow.child === child) deviceFlow.closedAt = Date.now();
+      ghPath = null;
+      flow.closedAt = Date.now();
     });
+
     const code = await new Promise((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error("25 秒内未拿到设备码：对 github.com 的请求被瞬时干扰，重试即可（GitHub 直连，无需代理）")),
-        25_000,
+        TIMEOUT.deviceCode,
       );
       const onData = () => {
         const match = buffer.match(/one[-\s]?time code[^0-9A-Z]*([0-9A-Z]{4}-[0-9A-Z]{4})/i);
@@ -234,25 +253,138 @@ export default defineApp(async (sdk) => {
       child.on("close", () => {
         clearTimeout(timer);
         const netFail = /failed to authenticate|wsarecv|connection|timed out|refused|reset/i.test(buffer);
-        reject(new Error(netFail ? `网络层失败（直连 github.com 瞬时不稳定）：${clip(buffer) || "无输出"}` : `gh 提前退出：${clip(buffer) || "无输出"}`));
+        reject(
+          new Error(
+            netFail
+              ? `网络层失败（直连 github.com 瞬时不稳定）：${clip(buffer) || "无输出"}`
+              : `gh 提前退出：${clip(buffer) || "无输出"}`,
+          ),
+        );
       });
     }).catch((error) => ({ error: String(error?.message ?? error) }));
+
     if (typeof code === "object") {
-      try {
-        child.kill();
-      } catch {
-        /* ignore */
-      }
+      child.kill();
       throw new Error(code.error);
     }
-    // 关键：拿到码后绝不杀子进程。gh 必须持续轮询，才能接住用户的授权动作。
+
+    // 关键：拿到码后进程必须存活并持续轮询，否则接不住用户的授权动作。
     child.unref();
-    deviceFlow = { code, url: DEVICE_URL, startedAt: Date.now(), child, error: null };
+    flow.code = code;
+    deviceFlow = flow;
     if (openBrowser) openInBrowser(DEVICE_URL);
-    return deviceFlow;
+    return flow;
   }
 
-  // ==== 工具：状态 ====
+  function activeDeviceFlow() {
+    return deviceFlow?.code && !deviceFlow.closedAt ? deviceFlow : null;
+  }
+
+  /** token 登录：把 PAT 经 stdin 交给 gh（不落盘、不回显）。 */
+  async function loginWithToken(host, token) {
+    const command = await resolveGh();
+    return new Promise((resolve) => {
+      const child = spawn(
+        command,
+        ["auth", "login", "--hostname", host, "--git-protocol", "https", "--with-token"],
+        { shell: false, stdio: ["pipe", "pipe", "pipe"], env: cleanEnv() },
+      );
+      let out = "";
+      let err = "";
+      child.stdout.on("data", (d) => (out += d));
+      child.stderr.on("data", (d) => (err += d));
+      child.on("error", (error) =>
+        resolve(fail(`登录进程启动失败：${error?.message ?? error}`, error?.code === "ENOENT" ? MISSING_HINT : undefined)),
+      );
+      child.on("close", (code) => {
+        if (code === 0) {
+          ghPath = null;
+          resolve(text("gh auth login 成功（token 已交给 gh 自行保存，本 App 不保留副本）。\n下一步：调用 github_cli_status 验证登录态并向用户确认账号。"));
+        } else {
+          resolve(
+            fail(
+              `gh auth login 失败（退出码 ${code}）：\n${clip(combine(out, err)) || "无输出，常见原因是令牌无效、已吊销或 scope 不足"}`,
+              "令牌可在 https://github.com/settings/tokens 重新生成；或改用 mode=device 设备码登录。",
+            ),
+          );
+        }
+      });
+      child.stdin.on("error", () => {});
+      child.stdin.end(String(token).trim());
+    });
+  }
+
+  // ---------------------------------------------------------------- 安装管理
+
+  let installState = { running: false, done: false, error: null, log: "", startedAt: null };
+  let installPromise = null;
+
+  function installArgv() {
+    if (process.platform === "win32") {
+      return {
+        command: "winget",
+        argv: ["install", "--id", "GitHub.cli", "--accept-source-agreements", "--accept-package-agreements", "--silent"],
+      };
+    }
+    if (process.platform === "darwin") return { command: "brew", argv: ["install", "gh"] };
+    return null;
+  }
+
+  /** 幂等启动安装：并发调用共享同一个 Promise，完成后可再次启动（重装）。 */
+  function startInstall() {
+    if (installPromise) return installPromise;
+
+    const startedAt = Date.now();
+    installState = { running: true, done: false, error: null, log: "", startedAt };
+
+    installPromise = (async () => {
+      const target = installArgv();
+      if (!target) {
+        installState = {
+          running: false,
+          done: true,
+          error: `当前平台（${process.platform}）不支持自动安装，请手动安装 gh`,
+          log: "",
+          startedAt,
+        };
+        return installState;
+      }
+
+      const result = await run(target.command, target.argv, { timeoutMs: TIMEOUT.install });
+      ghPath = null; // 装完重新探测
+
+      if (result.enoent) {
+        installState = {
+          running: false,
+          done: true,
+          error: `未找到包管理器 ${target.command}，请手动安装`,
+          log: "可手动执行：winget install --id GitHub.cli",
+          startedAt,
+        };
+        return installState;
+      }
+
+      const log = clip(combine(result.stdout, result.stderr)) || "（无输出）";
+      const probe = await gh(["--version"], { timeoutMs: TIMEOUT.probe });
+      const ok = probe.ok || /successfully installed|已成功安装/i.test(log);
+
+      installState = {
+        running: false,
+        done: true,
+        error: ok ? null : result.message || "安装命令结束但未检测到 gh，请查看日志",
+        log,
+        startedAt,
+      };
+      return installState;
+    })().finally(() => {
+      installPromise = null;
+    });
+
+    return installPromise;
+  }
+
+  // ---------------------------------------------------------------- 工具注册
+
   await sdk.tools.register({
     name: "github_cli_status",
     description:
@@ -262,25 +394,24 @@ export default defineApp(async (sdk) => {
       const env = await readEnvironment();
       const lines = [`GitHub CLI App v${VERSION}`];
       if (!env.installed) {
-        lines.push("gh：未安装");
-        lines.push(`下一步：${MISSING_HINT}`);
-        return textPayload(lines.join("\n"));
+        lines.push("gh：未安装", `下一步：${MISSING_HINT}`);
+        return text(lines.join("\n"));
       }
       lines.push(`gh：${env.version || "（版本未知）"}`);
       if (env.loggedIn && env.account) {
-        lines.push(`登录：✓ ${env.account.login} @ ${env.account.host}`);
-        lines.push(`scope：${env.account.scopes || "（未报告）"}`);
-        lines.push(`协议：${env.account.protocol || "https"}｜凭据：${env.account.tokenSource || "未知"}`);
-        if (deviceFlow?.code && !deviceFlow.closedAt) lines.push("（面板里还有一个待完成的设备码授权流程）");
+        lines.push(
+          `登录：✓ ${env.account.login} @ ${env.account.host}`,
+          `scope：${env.account.scopes || "（未报告）"}`,
+          `协议：${env.account.protocol || "https"}｜凭据：${env.account.tokenSource || "未知"}`,
+        );
+        if (activeDeviceFlow()) lines.push("（面板里还有一个待完成的设备码授权流程）");
       } else {
-        lines.push("登录：未登录");
-        lines.push("下一步：调用 github_cli_login（mode=device 推荐）登录，或在应用管理面板点「登录」。");
+        lines.push("登录：未登录", "下一步：调用 github_cli_login（mode=device 推荐）登录，或在应用管理面板点「登录」。");
       }
-      return textPayload(lines.join("\n"));
+      return text(lines.join("\n"));
     },
   });
 
-  // ==== 工具：通用执行 ====
   await sdk.tools.register({
     name: "github_cli_run",
     description:
@@ -295,46 +426,34 @@ export default defineApp(async (sdk) => {
           minItems: 1,
         },
         cwd: { type: "string", description: "可选。运行目录（绝对路径），git 相关命令通常需要在仓库内。" },
-        timeoutMs: { type: "number", description: `可选超时（毫秒），默认 ${DEFAULT_TIMEOUT_MS}，上限 ${MAX_TIMEOUT_MS}。` },
+        timeoutMs: { type: "number", description: `可选超时（毫秒），默认 ${TIMEOUT.run}，上限 ${TIMEOUT.runMax}。` },
       },
       required: ["args"],
     },
     execute: async ({ args, cwd, timeoutMs }) => {
-      if (!Array.isArray(args) || args.length === 0) return failurePayload("args 必须是非空字符串数组。");
-      const cleaned = args.map(String);
-      if (cleaned[0].toLowerCase() === "gh") cleaned.shift();
-      if (cleaned.some((a) => /[<>|;&$`]/.test(a))) {
-        return failurePayload("参数含 shell 元字符，已拒绝。gh 子命令本身支持所需能力（如 --json/--jq/--web），无需管道。");
+      if (!Array.isArray(args) || args.length === 0) return fail("args 必须是非空字符串数组。");
+
+      const argv = args.map(String);
+      if (argv[0]?.toLowerCase() === "gh") argv.shift();
+      if (argv.some((a) => /[<>|;&$`]/.test(a))) {
+        return fail("参数含 shell 元字符，已拒绝。gh 子命令本身支持所需能力（如 --json/--jq/--web），无需管道。");
       }
-      const command = await resolveGh();
-      const timeout = Math.min(Math.max(Number(timeoutMs) || DEFAULT_TIMEOUT_MS, 5_000), MAX_TIMEOUT_MS);
-      try {
-        const { stdout, stderr } = await execFileAsync(command, cleaned, {
-          shell: false,
-          timeout,
-          maxBuffer: 16 * 1024 * 1024,
-          env: cleanEnv(),
-          ...(cwd ? { cwd: String(cwd) } : {}),
-        });
-        const body = [clip(stdout), stderr ? `[stderr]\n${clip(stderr)}` : ""].filter(Boolean).join("\n");
-        return textPayload(`gh ${cleaned.join(" ")} 执行成功：\n\n${body || "（无输出）"}`);
-      } catch (error) {
-        if (error?.code === "ENOENT") {
-          cachedExecutable = null;
-          return failurePayload(MISSING_HINT);
-        }
-        const stdout = clip(String(error?.stdout ?? ""));
-        const stderr = clip(String(error?.stderr ?? ""));
-        const status = error?.killed ? "超时被终止" : `退出码 ${error?.code ?? error?.signal ?? "未知"}`;
-        return failurePayload(
-          `gh ${cleaned.join(" ")} 失败（${status}）。\n${[stdout, stderr].filter(Boolean).join("\n") || error?.message || ""}`,
-          "gh 非零退出常因未登录、无权限或不在 git 仓库内；可先跑 github_cli_status 或补 cwd。",
-        );
+
+      const timeout = Math.min(Math.max(Number(timeoutMs) || TIMEOUT.run, 5_000), TIMEOUT.runMax);
+      const result = await gh(argv, { timeoutMs: timeout, cwd });
+
+      if (result.enoent) return fail(MISSING_HINT);
+      const label = `gh ${argv.join(" ")}`;
+      if (result.ok) {
+        return text(`${label} 执行成功：\n\n${combine(result.stdout, result.stderr && `[stderr]\n${result.stderr}`) || "（无输出）"}`);
       }
+      return fail(
+        `${label} 失败（${describe(result)}）。\n${combine(result.stdout, result.stderr) || result.message}`,
+        "gh 非零退出常因未登录、无权限或不在 git 仓库内；可先跑 github_cli_status 或补 cwd。",
+      );
     },
   });
 
-  // ==== 工具：安装 gh ====
   await sdk.tools.register({
     name: "github_cli_install",
     description:
@@ -343,19 +462,22 @@ export default defineApp(async (sdk) => {
     execute: async () => {
       const before = await readEnvironment();
       if (before.installed) {
-        return textPayload(`gh 已安装（${before.version}），无需重复安装。下载页：${GH_DOWNLOAD_URL}`);
+        return text(`gh 已安装（${before.version}），无需重复安装。下载页：${GH_DOWNLOAD_URL}`);
       }
-      const state = await installGhCli();
-      if (state.error) return failurePayload(state.error, `可手动安装：winget install --id GitHub.cli；或从 ${GH_DOWNLOAD_URL} 下载。\n日志：${state.log}`);
+
+      const state = await startInstall();
+      if (state.error) {
+        return fail(state.error, `可手动安装：winget install --id GitHub.cli；或从 ${GH_DOWNLOAD_URL} 下载。\n日志：${state.log}`);
+      }
+
       const after = await readEnvironment();
       if (after.installed) {
-        return textPayload(`GitHub CLI 安装成功：${after.version}\n下一步：调用 github_cli_login(mode=device) 登录，或打开应用管理面板点「登录」。`);
+        return text(`GitHub CLI 安装成功：${after.version}\n下一步：调用 github_cli_login(mode=device) 登录，或在应用管理面板点「登录」。`);
       }
-      return failurePayload("安装命令已执行，但仍未探测到 gh。可能需要重开终端或重启 Hana 让 PATH 生效。", `日志：${state.log}`);
+      return fail("安装命令已执行，但仍未探测到 gh。可能需要重开终端或重启 Hana 让 PATH 生效。", `日志：${state.log}`);
     },
   });
 
-  // ==== 工具：登录 ====
   await sdk.tools.register({
     name: "github_cli_login",
     description:
@@ -370,37 +492,23 @@ export default defineApp(async (sdk) => {
       required: ["mode"],
     },
     execute: async ({ mode, token, hostname }) => {
-      const host = String(hostname || "github.com");
-      const command = await resolveGh();
+      const host = String(hostname || GH_HOST);
+
       if (mode === "token") {
         if (!token || String(token).trim().length < 40) {
-          return failurePayload("mode=token 需要一个有效的 PAT（至少 40 字符）。或改用 mode=device。", "令牌页：https://github.com/settings/tokens；建议勾选 read:org 与 repo 相关 scope。");
+          return fail(
+            "mode=token 需要一个有效的 PAT（至少 40 字符）。或改用 mode=device。",
+            "令牌页：https://github.com/settings/tokens；建议勾选 read:org 与 repo 相关 scope。",
+          );
         }
-        return await new Promise((resolve) => {
-          const child = spawn(command, ["auth", "login", "--hostname", host, "--git-protocol", "https", "--with-token"], {
-            shell: false,
-            stdio: ["pipe", "pipe", "pipe"],
-            env: cleanEnv(),
-          });
-          let out = "";
-          let err = "";
-          child.stdout.on("data", (d) => (out += d));
-          child.stderr.on("data", (d) => (err += d));
-          child.on("error", (error) => {
-            resolve(failurePayload(`登录进程启动失败：${error?.message ?? error}`, error?.code === "ENOENT" ? MISSING_HINT : undefined));
-          });
-          child.on("close", (code) => {
-            if (code === 0) resolve(textPayload("gh auth login 成功（token 已交给 gh 自行保存，本 App 不保留副本）。\n下一步：调用 github_cli_status 验证登录态并向用户确认账号。"));
-            else resolve(failurePayload(`gh auth login 失败（退出码 ${code}）：\n${clip([out, err].filter(Boolean).join("\n")) || "无输出，常见原因是令牌无效、已吊销或 scope 不足"}`, "令牌可在 https://github.com/settings/tokens 重新生成；或改用 mode=device 设备码登录。"));
-          });
-          child.stdin.on("error", () => {});
-          child.stdin.end(String(token).trim());
-        });
+        return loginWithToken(host, token);
       }
-      if (mode !== "device") return failurePayload("mode 只能是 token 或 device。");
+
+      if (mode !== "device") return fail("mode 只能是 token 或 device。");
+
       try {
         const flow = await startDeviceFlow({ openBrowser: true });
-        return textPayload(
+        return text(
           [
             "✅ 设备码登录流程已启动，后台轮询进程存活中（代码约 15 分钟有效）。",
             "",
@@ -413,12 +521,14 @@ export default defineApp(async (sdk) => {
           ].join("\n"),
         );
       } catch (error) {
-        return failurePayload(`设备码获取失败：${error?.message ?? error}`, "GitHub 直连偶发瞬时干扰，重跑本工具通常即可；反复失败再考虑手动 gh auth login 或 token 方式。");
+        return fail(
+          `设备码获取失败：${error?.message ?? error}`,
+          "GitHub 直连偶发瞬时干扰，重跑本工具通常即可；反复失败再考虑手动 gh auth login 或 token 方式。",
+        );
       }
     },
   });
 
-  // ==== 工具：退出登录 ====
   await sdk.tools.register({
     name: "github_cli_logout",
     description:
@@ -430,45 +540,47 @@ export default defineApp(async (sdk) => {
       },
     },
     execute: async ({ hostname }) => {
-      const host = String(hostname || "github.com");
+      const host = String(hostname || GH_HOST);
       const before = await readEnvironment();
-      if (!before.loggedIn) return textPayload("当前未登录任何 GitHub 账号，无需退出。");
-      const res = await runGh(["auth", "logout", "--hostname", host], { timeoutMs: 30_000 });
-      if (res.ok) {
-        return textPayload(`已退出 ${host} 的 gh 登录（本地凭据已删除，远端令牌未吊销）。\n如需重新登录：github_cli_login(mode=device)。`);
+      if (!before.loggedIn) return text("当前未登录任何 GitHub 账号，无需退出。");
+
+      const result = await gh(["auth", "logout", "--hostname", host], { timeoutMs: TIMEOUT.login });
+      if (result.ok) {
+        deviceFlow = null;
+        return text(`已退出 ${host} 的 gh 登录（本地凭据已删除，远端令牌未吊销）。\n如需重新登录：github_cli_login(mode=device)。`);
       }
-      return failurePayload(`退出失败：\n${[res.stdout, res.stderr, res.status].filter(Boolean).join("\n")}`, "也可在终端执行 gh auth logout --hostname " + host);
+      return fail(
+        `退出失败：\n${combine(result.stdout, result.stderr, result.ok ? "" : describe(result))}`,
+        `也可在终端执行 gh auth logout --hostname ${host}`,
+      );
     },
   });
 
-  // ==== 面板后端路由（供 ui/panel.html 调用） ====
+  // ---------------------------------------------------------------- 面板后端路由
+
   await sdk.routes.register((app) => {
     app.get("/status", async (c) => {
       const env = await readEnvironment();
+      const flow = activeDeviceFlow();
       return c.json({
         ok: true,
         version: VERSION,
         gh: { installed: env.installed, version: env.version },
         auth: { loggedIn: env.loggedIn, account: env.account },
         install: { running: installState.running, done: installState.done, error: installState.error, log: installState.log },
-        device:
-          deviceFlow?.code && !deviceFlow.closedAt
-            ? { active: true, code: deviceFlow.code, url: deviceFlow.url, startedAt: deviceFlow.startedAt }
-            : { active: false },
+        device: flow ? { active: true, code: flow.code, url: flow.url, startedAt: flow.startedAt } : { active: false },
       });
     });
 
-    app.post("/install", async (c) => {
-      if (installState.running) return c.json({ ok: true, started: false, message: "安装已在进行中" });
-      installState = { running: true, done: false, error: null, log: "", startedAt: Date.now() };
-      installGhCli().catch(() => {});
-      return c.json({ ok: true, started: true });
+    app.post("/install", (c) => {
+      const started = !installPromise;
+      startInstall().catch(() => {});
+      return c.json({ ok: true, started, message: started ? undefined : "安装已在进行中" });
     });
 
     app.post("/login/device", async (c) => {
-      if (deviceFlow?.code && !deviceFlow.closedAt) {
-        return c.json({ ok: true, reused: true, code: deviceFlow.code, url: deviceFlow.url });
-      }
+      const existing = activeDeviceFlow();
+      if (existing) return c.json({ ok: true, reused: true, code: existing.code, url: existing.url });
       try {
         const flow = await startDeviceFlow({ openBrowser: true });
         return c.json({ ok: true, code: flow.code, url: flow.url });
@@ -478,14 +590,15 @@ export default defineApp(async (sdk) => {
     });
 
     app.post("/logout", async (c) => {
-      const res = await runGh(["auth", "logout", "--hostname", "github.com"], { timeoutMs: 30_000 });
-      return c.json({ ok: res.ok, output: res.ok ? res.stdout : [res.stdout, res.stderr, res.status].filter(Boolean).join("\n") });
+      const result = await gh(["auth", "logout", "--hostname", GH_HOST], { timeoutMs: TIMEOUT.login });
+      if (result.ok) deviceFlow = null;
+      return c.json({ ok: result.ok, output: result.ok ? result.stdout : combine(result.stdout, result.stderr, describe(result)) });
     });
 
-    app.post("/open-device", async (c) => {
-      return c.json({ ok: openInBrowser(DEVICE_URL) });
-    });
+    app.post("/open-device", (c) => c.json({ ok: openInBrowser(DEVICE_URL) }));
   });
 
-  await sdk.logger.info("github-cli tools registered: status / run / install / login / logout；panel routes mounted");
+  await sdk.logger.info(
+    `${APP_ID} ready: tools=status/run/install/login/logout, routes=status/install/login/logout/open-device`,
+  );
 });

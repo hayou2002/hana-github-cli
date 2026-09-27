@@ -1,42 +1,55 @@
-# GitHub CLI
+# GitHub CLI（Hana v2 App）
 
-A Hana v2 app (`manifestVersion: 2`). Kind: `tool`.
+把官方 [GitHub CLI](https://cli.github.com)（`gh`）桥接为 Hana 工具，并提供一枚管理面板卡片。
+顶层说明、安装方式与使用方法见仓库根目录的 [README.md](../README.md)。
 
-The identity icon is declared by `icon` in the manifest and shipped in `assets/`. Keep the source image; Hana creates a display copy during installation. Large images are resized automatically, and small images only receive a clarity recommendation.
+## 目录
 
-## SDK and validate
-
-`index.js` imports the bundled local App SDK and uses `defineApp(async sdk => ...)`. Registration calls wait for the host acknowledgement; retain the returned receipt when later code must dispose a registration explicitly. The scaffold does not install packages or resolve imports from Hana's own `node_modules`.
-
-Every declared card must have `face.image` pointing to a bundled, nonempty PNG/WebP/SVG under `ui/`. For `ui` and `full`, the scaffold copies the explicit `--cover` source into `ui/assets/`. Keep the declaration and file together when editing or packaging; a missing or invalid cover rejects the App. Tool-only Apps do not need a card cover.
-
-## Validate
-
-The scaffold has run static package validation. After editing, build if required, then run these commands from a Hana checkout:
-
-```sh
-node scripts/validate-app.mjs --dir /path/to/github-cli --json
-node scripts/validate-app.mjs --dir /path/to/github-cli --smoke --json
+```
+manifest.json      v2 清单：能力声明 + 管理面板卡片
+index.js           入口：五个工具 + 面板后端路由
+assets/icon.svg    应用图标
+ui/
+  panel.html       管理面板页面
+  assets/panel.js  面板交互（单一 state + render）
+  assets/panel.css 面板样式（沿用 Hana 主题令牌）
+  assets/cover.svg 卡片封面（contributes.cards[].face.image）
+  assets/sdk.js    官方客户端桥 SDK（本地打包，运行时免依赖）
+sdk/               官方服务端 App SDK（本地打包，运行时免依赖）
 ```
 
-Use `--archive /path/to/install.zip --json` to validate the final installation archive. Add `--smoke` when startup execution is part of the task: it starts a backend process and, for declared UI pages, an Electron runner. Static validation alone does not prove runtime behavior. UI packages use path-scoped relative assets and the App UI SDK.
+## 后端（index.js）结构
 
-## Startup arguments
+按职责分区，便于定位：
 
-This App declares no startup arguments. Add static `contributes.cliFlags` entries only when startup-time configuration is necessary; then start Hana with `hana serve -- --app.<id>.<flag>=<value>`.
+1. **常量** —— 版本、超时、限制、下载页
+2. **环境与路径** —— `cleanEnv()`（剔除残留代理变量）、gh 候选路径、`clip()`、`openInBrowser()`
+3. **结果封装** —— `text()` / `fail()` / `combine()`
+4. **进程执行** —— 统一执行器 `run()`、`resolveGh()`、`gh()`、`describe()`
+5. **状态读取** —— `readEnvironment()`：一次拿到「是否安装 + 版本 + 登录账号」
+6. **设备码流程** —— `startDeviceFlow()` / `activeDeviceFlow()` / `loginWithToken()`
+7. **安装管理** —— `startInstall()`（幂等，共享 Promise）
+8. **工具注册** —— status / run / install / login / logout
+9. **面板路由** —— `GET /status`、`POST /install|/login/device|/logout|/open-device`
 
-## Install
+### 两条硬约束
 
-1. Use Hana Builder to import this local directory into an isolated development project.
-2. Complete App Manager's review and read the actual installation result.
-3. For production installation, give the validated package or local directory to App Manager. The manifest id is `github-cli`.
+- **不做 shell 展开**：所有子进程走 `execFile`，参数以数组传递；`github_cli_run` 额外拒绝含 `<>|;&$`` ` 的参数
+- **GitHub 直连**：起子进程前用 `cleanEnv()` 清除 `HTTP_PROXY` 等 8 个代理变量
+- **设备码进程必须存活**：拿到码后 `unref()` 但不 kill，gh 需持续轮询才能接住用户的授权
 
-## After you edit
+## 前端（ui/）结构
 
-Build changed sources, then explicitly reload through Builder or App Manager. Local-directory installs retain their source for reload. New permission requests require review; read the resulting state before continuing. Keep the source project separate from the disposable development environment.
+- 数据面：`hana.api.fetch` → `/api/apps/github-cli/routes/*`
+- 渲染：单一 `state` 对象 + 单一 `render()`；活动中的安装/授权按 2.5s 轮询
+- 复制一次性代码：三级兜底（宿主剪贴板 → `navigator.clipboard` → `execCommand`），全失败给可全选输入框
+- 打开授权页：`hana.external.open`（iframe 内 `target="_blank"` 不可靠）
 
-## How the starter tool runs
+## 校验与打包
 
-The starter tool uses the declared name, without an automatic host prefix. The manifest requests `app/tools.expose-to-model`; after approval, enable the App for the intended Agent. Discover the current tool schema before calling it. The Agent's tool discovery mode determines whether the tool is listed directly or found through deferred discovery.
+```bash
+node <skills>/hana-app-creator/scripts/validate_app.mjs --dir . --json
+node <skills>/hana-app-creator/scripts/pack_app.mjs --dir . --publisher "快乐小猫" --out ./dist-extensions
+```
 
-The full contract is in `APPS.md` / `APPS_EN.md`.
+> 带 `--smoke` 的 UI 冒烟需要独立 Electron 运行时（`HANA_APP_ELECTRON`）；未配置时跳过，静态校验不受影响。

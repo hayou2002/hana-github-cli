@@ -1,105 +1,126 @@
 // GitHub CLI 管理面板：安装 / 登录 / 退出 三段式交互。
-// 数据面走 SDK 提供的 hana.api.fetch → /api/apps/github-cli/routes/*
+// 数据面：hana.api.fetch → /api/apps/github-cli/routes/*
+// 渲染模型：单一 state 对象 + 一个 render()，所有 UI 变化都经它落地。
 import { hana } from "./sdk.js";
 
-const $ = (id) => document.getElementById(id);
-
-const els = {
-  dot: $("health-dot"),
-  appVersion: $("app-version"),
-  startup: $("startup"),
-  installSec: $("sec-install"),
-  ghVersion: $("gh-version"),
-  installAction: $("install-action"),
-  installLog: $("install-log"),
-  authSec: $("sec-auth"),
-  authHint: $("auth-hint"),
-  authBtnSlot: $("auth-btn-slot"),
-  codeChip: $("device-code"),
-  codeText: $("device-code-text"),
-  steps: $("login-steps"),
-  note: $("auth-note"),
-  updated: $("updated"),
-  refresh: $("refresh"),
+const ROUTE = {
+  status: "/status",
+  install: "/install",
+  login: "/login/device",
+  logout: "/logout",
 };
 
+const POLL_INTERVAL_MS = 2500;
+const LOG_TAIL_CHARS = 4000;
+const CODE_COPIED_RESET_MS = 1800;
+
+const el = (id) => document.getElementById(id);
+
+const ui = {
+  dot: el("health-dot"),
+  appVersion: el("app-version"),
+  startup: el("startup"),
+  installSection: el("sec-install"),
+  ghVersion: el("gh-version"),
+  installAction: el("install-action"),
+  installLog: el("install-log"),
+  authSection: el("sec-auth"),
+  authHint: el("auth-hint"),
+  authAction: el("auth-btn-slot"),
+  codeChip: el("device-code"),
+  codeChipText: el("device-code-text"),
+  codeChipTip: document.querySelector(".code-chip__tip"),
+  steps: el("login-steps"),
+  note: el("auth-note"),
+  updated: el("updated"),
+  refresh: el("refresh"),
+};
+
+/** 当前面板状态：由 /status 返回值与本地动作共同维护。 */
+let state = { version: null, gh: {}, auth: {}, install: {}, device: {} };
+let pendingAction = null; // "install" | "login" | "logout" | null
 let pollTimer = null;
-let busy = false;
 
-function setDot(state) {
-  els.dot.dataset.state = state;
-}
-
-function button(label, { variant = "primary", onClick, disabled = false } = {}) {
-  const b = document.createElement("button");
-  b.type = "button";
-  b.className = "btn" + (variant === "ghost" ? " btn--ghost" : "") + (variant === "danger" ? " btn--danger" : "");
-  b.textContent = label;
-  b.disabled = disabled;
-  if (onClick) b.addEventListener("click", onClick);
-  return b;
-}
-
-function busyNode(label) {
-  const wrap = document.createElement("span");
-  wrap.className = "busy";
-  const sp = document.createElement("span");
-  sp.className = "spinner";
-  const tx = document.createElement("span");
-  tx.textContent = label;
-  wrap.append(sp, tx);
-  return wrap;
-}
+// ---------------------------------------------------------------- 基础件
 
 async function api(path, init) {
   const res = await hana.api.fetch(path, init);
-  const text = await res.text();
-  let data = null;
+  const raw = await res.text();
   try {
-    data = text ? JSON.parse(text) : null;
+    return { status: res.status, data: raw ? JSON.parse(raw) : null };
   } catch {
-    data = { ok: false, error: text };
+    return { status: res.status, data: { ok: false, error: raw } };
   }
-  return { status: res.status, data };
 }
 
+function makeButton(label, { variant = "primary", onClick, disabled = false } = {}) {
+  const node = document.createElement("button");
+  node.type = "button";
+  node.className = ["btn", variant === "ghost" && "btn--ghost", variant === "danger" && "btn--danger"]
+    .filter(Boolean)
+    .join(" ");
+  node.textContent = label;
+  node.disabled = disabled;
+  if (onClick) node.addEventListener("click", onClick);
+  return node;
+}
+
+function makeBusy(label) {
+  const wrap = document.createElement("span");
+  wrap.className = "busy";
+  const spinner = document.createElement("span");
+  spinner.className = "spinner";
+  const node = document.createElement("span");
+  node.textContent = label;
+  wrap.append(spinner, node);
+  return wrap;
+}
+
+function setNote(message) {
+  ui.note.hidden = !message;
+  ui.note.textContent = message || "";
+}
+
+function setDot(kind) {
+  ui.dot.dataset.state = kind;
+}
+
+// ---------------------------------------------------------------- 复制（三级兜底）
+
 /**
- * 三级兜底复制：宿主剪贴板 → 浏览器原生 → execCommand。
- * 任一层成功即返回方式名，全失败返回 null。
+ * 复制文本：宿主剪贴板 → 浏览器原生 → execCommand。
+ * 返回成功的层级名，全失败返回 null。
  */
-async function copyText(text) {
-  const value = String(text ?? "");
-  if (!value) return null;
-  // 1) Hana 宿主剪贴板（需 app/ui.clipboard-write）；短超时，避免按钮卡死
+async function copyText(value) {
+  const data = String(value ?? "");
+  if (!data) return null;
+
   try {
-    await hana.clipboard.writeText(value, { timeoutMs: 2000 });
+    await hana.clipboard.writeText(data, { timeoutMs: 2000 });
     return "host";
   } catch {
-    /* 落到下一层 */
+    /* 落下一级 */
   }
-  // 2) 浏览器原生异步剪贴板
+
   try {
     if (navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(value);
+      await navigator.clipboard.writeText(data);
       return "navigator";
     }
   } catch {
-    /* 落到下一层 */
+    /* 落下一级 */
   }
-  // 3) 兜底：临时 textarea + execCommand（旧内核/受限 iframe 常用）
+
   try {
-    const ta = document.createElement("textarea");
-    ta.value = value;
-    ta.setAttribute("readonly", "");
-    ta.style.position = "fixed";
-    ta.style.top = "-1000px";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    ta.setSelectionRange(0, value.length);
+    const area = document.createElement("textarea");
+    area.value = data;
+    area.readOnly = true;
+    area.style.cssText = "position:fixed;top:-1000px;opacity:0";
+    document.body.appendChild(area);
+    area.select();
+    area.setSelectionRange(0, data.length);
     const ok = document.execCommand("copy");
-    document.body.removeChild(ta);
+    document.body.removeChild(area);
     if (ok) return "execCommand";
   } catch {
     /* 全部失败 */
@@ -107,201 +128,199 @@ async function copyText(text) {
   return null;
 }
 
-/** 兜底提示：把代码放进可全选输入框，让用户手动 Ctrl+C。 */
-function showManualCopy(text) {
-  els.note.hidden = false;
-  els.note.textContent = "自动复制被拦截，请按 Ctrl+C 复制：";
-  let input = document.getElementById("manual-copy");
-  if (!input) {
-    input = document.createElement("input");
-    input.id = "manual-copy";
-    input.readOnly = true;
-    input.className = "manual-copy";
-    els.note.after(input);
+/** 自动复制被拦截时，给一个已全选的输入框让用户手动 Ctrl+C。 */
+function offerManualCopy(value) {
+  let field = el("manual-copy");
+  if (!field) {
+    field = document.createElement("input");
+    field.id = "manual-copy";
+    field.readOnly = true;
+    field.className = "manual-copy";
+    ui.note.after(field);
   }
-  input.value = text;
-  input.hidden = false;
-  input.focus();
-  input.select();
+  setNote("自动复制被拦截，请按 Ctrl+C 复制：");
+  field.value = value;
+  field.hidden = false;
+  field.focus();
+  field.select();
 }
 
-function renderInstall(state) {
-  els.installSec.hidden = false;
-  const gh = state.gh || {};
-  els.ghVersion.textContent = gh.installed ? `已安装 · ${gh.version || "版本未知"}` : "未安装";
-  els.installAction.textContent = "";
+function hideManualCopy() {
+  const field = el("manual-copy");
+  if (field) field.hidden = true;
+}
 
-  const inst = state.install || {};
-  if (gh.installed) {
-    els.installAction.append(
-      button("重新安装", {
-        variant: "ghost",
-        disabled: !!inst.running,
-        onClick: () => startInstall(),
-      }),
-    );
-    if (!inst.log) els.installLog.hidden = true;
-  } else if (inst.running) {
-    els.installAction.append(busyNode("正在安装…"));
+// ---------------------------------------------------------------- 渲染
+
+function renderInstall() {
+  const { installed, version } = state.gh;
+  const install = state.install;
+
+  ui.installSection.hidden = false;
+  ui.ghVersion.textContent = installed ? `已安装 · ${version || "版本未知"}` : "未安装";
+  ui.installAction.textContent = "";
+
+  if (install.running) {
+    ui.installAction.append(makeBusy("正在安装…"));
+  } else if (installed) {
+    ui.installAction.append(makeButton("重新安装", { variant: "ghost", onClick: requestInstall }));
   } else {
-    els.installAction.append(button("一键安装", { onClick: () => startInstall() }));
+    ui.installAction.append(makeButton("一键安装", { onClick: requestInstall }));
   }
 
-  if (inst.done && inst.log) {
-    els.installLog.hidden = false;
-    els.installLog.textContent = inst.log.slice(-4000);
-  } else if (!inst.done) {
-    els.installLog.hidden = true;
-  }
-  if (inst.error) {
-    els.note.hidden = false;
-    els.note.textContent = inst.error;
-  }
+  const showLog = !!(install.done && install.log);
+  ui.installLog.hidden = !showLog;
+  if (showLog) ui.installLog.textContent = install.log.slice(-LOG_TAIL_CHARS);
 }
 
-function renderAuth(state) {
-  els.authSec.hidden = false;
-  const auth = state.auth || {};
-  const acc = auth.account;
-  const device = state.device || {};
-  els.authBtnSlot.textContent = "";
-  els.codeChip.hidden = true;
+function renderAuth() {
+  const { loggedIn, account } = state.auth;
+  const device = state.device;
 
-  if (auth.loggedIn && acc) {
+  ui.authSection.hidden = false;
+  ui.authAction.textContent = "";
+  ui.codeChip.hidden = true;
+
+  if (loggedIn && account) {
     setDot("ok");
-    els.authHint.textContent = `${acc.login} @ ${acc.host}　·　${acc.protocol || "https"}　·　${acc.scopes || "scope 未报告"}`;
-    els.authBtnSlot.append(
-      button("退出登录", {
-        variant: "danger",
-        disabled: busy,
-        onClick: async () => {
-          if (!window.confirm(`确认退出 ${acc.login} 的登录？\n（只删本地凭据，不影响远端令牌）`)) return;
-          busy = true;
-          render();
-          const { data } = await api("/logout", { method: "POST" });
-          busy = false;
-          if (!data?.ok) {
-            els.note.hidden = false;
-            els.note.textContent = `退出失败：${data?.output || "未知错误"}`;
-          }
-          refresh();
-        },
-      }),
+    ui.authHint.textContent = `${account.login} @ ${account.host}　·　${account.protocol || "https"}　·　${account.scopes || "scope 未报告"}`;
+    ui.authAction.append(
+      makeButton("退出登录", { variant: "danger", disabled: pendingAction === "logout", onClick: requestLogout }),
     );
-    els.steps.hidden = true;
+    ui.steps.hidden = true;
+    return;
+  }
+
+  const waiting = !!device.active;
+  setDot(waiting ? "warn" : "off");
+  ui.authHint.textContent = waiting ? "等待授权中…" : "未登录";
+  ui.authAction.append(
+    makeButton(waiting ? "重新获取代码" : "登录", {
+      variant: waiting ? "ghost" : "primary",
+      disabled: pendingAction === "login",
+      onClick: requestLogin,
+    }),
+  );
+
+  ui.codeChip.hidden = !waiting;
+  if (waiting) {
+    ui.codeChipText.textContent = device.code;
+    ui.steps.hidden = false;
   } else {
-    setDot(device.active ? "warn" : "off");
-    els.authHint.textContent = device.active ? "等待授权中…" : "未登录";
-    els.authBtnSlot.append(
-      button(device.active ? "重新获取代码" : "登录", {
-        variant: device.active ? "ghost" : "primary",
-        disabled: busy,
-        onClick: () => startLogin(),
-      }),
-    );
-    if (device.active) {
-      els.codeChip.hidden = false;
-      els.codeText.textContent = device.code;
-      els.steps.hidden = false;
-    } else {
-      els.steps.hidden = true;
-    }
+    ui.steps.hidden = true;
   }
 }
 
-function render(state) {
-  els.appVersion.textContent = `v${state.version || "—"}`;
-  els.startup.textContent = "";
-  els.note.hidden = true;
-  renderInstall(state);
-  renderAuth(state);
-  els.updated.textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
+function render() {
+  ui.appVersion.textContent = `v${state.version || "—"}`;
+  ui.startup.textContent = "";
+  renderInstall();
+  renderAuth();
+  ui.updated.textContent = `更新于 ${new Date().toLocaleTimeString("zh-CN", { hour12: false })}`;
+}
+
+// ---------------------------------------------------------------- 数据刷新
+
+function schedulePoll() {
+  if (pollTimer) clearTimeout(pollTimer);
+  pollTimer = null;
+
+  const busy = state.install.running || state.device.active;
+  if (busy) pollTimer = setTimeout(refresh, POLL_INTERVAL_MS);
 }
 
 async function refresh() {
   try {
-    const { data } = await api("/status");
-    if (data?.ok) {
-      render(data);
-      schedulePoll(data);
-    } else {
-      els.startup.textContent = "读取状态失败，稍后自动重试。";
-    }
-  } catch (error) {
-    els.startup.textContent = `无法连接应用后端：${error?.message ?? error}`;
-  }
-}
-
-function schedulePoll(state) {
-  const active = state?.device?.active || state?.install?.running;
-  if (pollTimer) {
-    clearTimeout(pollTimer);
-    pollTimer = null;
-  }
-  if (active) {
-    pollTimer = setTimeout(refresh, 2500);
-  }
-}
-
-async function startInstall() {
-  els.note.hidden = true;
-  const { data } = await api("/install", { method: "POST" });
-  if (data?.message) {
-    els.startup.textContent = data.message;
-  }
-  refresh();
-}
-
-async function startLogin() {
-  busy = true;
-  els.note.hidden = true;
-  render({ version: els.appVersion.textContent.replace(/^v/, ""), gh: { installed: true }, auth: { loggedIn: false }, install: {} });
-  try {
-    const { data } = await api("/login/device", { method: "POST" });
+    const { data } = await api(ROUTE.status);
     if (!data?.ok) {
-      els.note.hidden = false;
-      els.note.textContent = `获取设备码失败：${data?.error || "未知错误"}。GitHub 直连偶发抖动，再点一次即可。`;
+      ui.startup.textContent = "读取状态失败，稍后自动重试。";
+      return;
     }
+    state = {
+      version: data.version,
+      gh: data.gh || {},
+      auth: data.auth || {},
+      install: data.install || {},
+      device: data.device || {},
+    };
+    render();
+    if (state.install.error) setNote(state.install.error);
+    schedulePoll();
   } catch (error) {
-    els.note.hidden = false;
-    els.note.textContent = `获取设备码失败：${error?.message ?? error}`;
+    ui.startup.textContent = `无法连接应用后端：${error?.message ?? error}`;
   }
-  busy = false;
+}
+
+// ---------------------------------------------------------------- 动作
+
+async function requestInstall() {
+  setNote("");
+  hideManualCopy();
+  await api(ROUTE.install, { method: "POST" });
   refresh();
 }
 
-els.codeChip.addEventListener("click", async () => {
-  const code = els.codeText.textContent.trim();
-  if (!code) return;
-  const tip = els.codeChip.querySelector(".code-chip__tip");
-  const how = await copyText(code);
-  if (how) {
-    els.codeChip.dataset.copied = "1";
-    if (tip) tip.textContent = "已复制";
-    const manual = document.getElementById("manual-copy");
-    if (manual) manual.hidden = true;
-    setTimeout(() => {
-      els.codeChip.dataset.copied = "0";
-      if (tip) tip.textContent = "复制";
-    }, 1800);
-  } else {
-    showManualCopy(code);
+async function requestLogout() {
+  const login = state.auth.account?.login;
+  if (!window.confirm(`确认退出 ${login} 的登录？\n（只删本地凭据，不影响远端令牌）`)) return;
+  pendingAction = "logout";
+  render();
+  setNote("");
+  const { data } = await api(ROUTE.logout, { method: "POST" });
+  pendingAction = null;
+  if (!data?.ok) setNote(`退出失败：${data?.output || "未知错误"}`);
+  refresh();
+}
+
+async function requestLogin() {
+  pendingAction = "login";
+  setNote("");
+  hideManualCopy();
+  render();
+  try {
+    const { data } = await api(ROUTE.login, { method: "POST" });
+    if (!data?.ok) {
+      setNote(`获取设备码失败：${data?.error || "未知错误"}。GitHub 直连偶发抖动，再点一次即可。`);
+    }
+  } catch (error) {
+    setNote(`获取设备码失败：${error?.message ?? error}`);
   }
+  pendingAction = null;
+  refresh();
+}
+
+// ---------------------------------------------------------------- 事件绑定
+
+ui.codeChip.addEventListener("click", async () => {
+  const code = ui.codeChipText.textContent.trim();
+  if (!code) return;
+
+  const how = await copyText(code);
+  if (!how) {
+    offerManualCopy(code);
+    return;
+  }
+  hideManualCopy();
+  ui.codeChip.dataset.copied = "1";
+  if (ui.codeChipTip) ui.codeChipTip.textContent = "已复制";
+  setTimeout(() => {
+    ui.codeChip.dataset.copied = "0";
+    if (ui.codeChipTip) ui.codeChipTip.textContent = "复制";
+  }, CODE_COPIED_RESET_MS);
 });
 
-els.refresh.addEventListener("click", () => refresh());
+ui.refresh.addEventListener("click", () => refresh());
 
 // iframe 内 target="_blank" 不可靠，授权页链接交给宿主的外部打开能力
-const deviceLink = document.querySelector('#login-steps a');
+const deviceLink = document.querySelector("#login-steps a");
 if (deviceLink) {
-  deviceLink.removeAttribute('target');
-  deviceLink.addEventListener('click', async (event) => {
+  deviceLink.removeAttribute("target");
+  deviceLink.addEventListener("click", async (event) => {
     event.preventDefault();
     try {
-      await hana.external.open('https://github.com/login/device');
+      await hana.external.open("https://github.com/login/device");
     } catch {
-      els.note.hidden = false;
-      els.note.textContent = '打开浏览器失败，请手动访问 https://github.com/login/device';
+      setNote("打开浏览器失败，请手动访问 https://github.com/login/device");
     }
   });
 }
