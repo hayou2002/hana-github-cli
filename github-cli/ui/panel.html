@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GitHub CLI 管理面板</title>
+  <link rel="stylesheet" href="./assets/panel.css">
+</head>
+<body>
+  <main class="panel" id="panel" aria-busy="true">
+    <header class="panel__head">
+      <div class="panel__title">
+        <span class="dot" id="health-dot" aria-hidden="true"></span>
+        <h1>GitHub CLI</h1>
+        <span class="tag" id="app-version">v—</span>
+      </div>
+      <button class="btn btn--ghost" id="refresh" type="button">刷新</button>
+    </header>
+
+    <p class="panel__status" id="startup" role="status">正在连接…</p>
+
+    <!-- 安装段 -->
+    <section class="card" id="sec-install" hidden>
+      <div class="card__row">
+        <div class="card__label">
+          <span class="card__name">命令行工具 gh</span>
+          <span class="card__hint" id="gh-version">—</span>
+        </div>
+        <div class="card__action" id="install-action"></div>
+      </div>
+      <pre class="log" id="install-log" hidden></pre>
+    </section>
+
+    <!-- 登录段 -->
+    <section class="card" id="sec-auth" hidden>
+      <div class="card__row">
+        <div class="card__label">
+          <span class="card__name">GitHub 账号</span>
+          <span class="card__hint" id="auth-hint">—</span>
+        </div>
+
+        <div class="card__action card__action--auth" id="auth-action">
+          <button class="code-chip" id="device-code" type="button" hidden title="点击复制一次性代码">
+            <span class="code-chip__text" id="device-code-text"></span>
+            <span class="code-chip__tip">复制</span>
+          </button>
+          <div class="btn-slot" id="auth-btn-slot"></div>
+        </div>
+      </div>
+
+      <ol class="steps" id="login-steps" hidden>
+        <li>浏览器若未自动弹出，手动打开 <a href="https://github.com/login/device" target="_blank" rel="noreferrer">github.com/login/device</a></li>
+        <li>输入左侧一次性代码</li>
+        <li>点 Authorize 授权，本面板会自动变为已登录</li>
+      </ol>
+
+      <p class="note" id="auth-note" hidden></p>
+    </section>
+
+    <footer class="panel__foot">
+      <span id="updated">—</span>
+    </footer>
+  </main>
+
+  <script>
+    window.addEventListener('error', () => {
+      const el = document.getElementById('startup');
+      if (el) el.textContent = '面板脚本启动失败，请检查应用资源或运行 App 校验器。';
+    }, true);
+  </script>
+  <script type="module" src="./assets/panel.js"></script>
+</body>
+</html>

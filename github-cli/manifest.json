@@ -2,13 +2,26 @@
   "manifestVersion": 2,
   "id": "github-cli",
   "name": "GitHub CLI",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "entry": "index.js",
   "capabilities": [
     "app/tools.expose-to-model",
-    "app/process.spawn"
+    "app/process.spawn",
+    "app/ui.clipboard-write",
+    "app/ui.open-external"
   ],
+  "contributes": {
+    "cards": [
+      {
+        "id": "panel",
+        "title": "GitHub CLI 管理面板",
+        "description": "安装/登录/退出 GitHub CLI 的一体化面板：显示 gh 安装状态与登录账号，未登录时提供一键登录（可复制一次性代码并自动打开授权页）。",
+        "route": "/panel.html",
+        "face": { "image": "assets/cover.svg" }
+      }
+    ]
+  },
   "icon": "assets/icon.svg",
-  "description": "将官方 GitHub CLI（gh）桥接为 Hana 工具：登录状态诊断、gh 命令安全执行、token/设备码两种登录方式。",
+  "description": "将官方 GitHub CLI（gh）桥接为 Hana 工具：一键安装、登录引导、状态诊断、安全命令执行，并附带管理面板卡片。",
   "minAppVersion": "0.1050.9"
 }

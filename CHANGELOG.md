@@ -2,6 +2,25 @@
 
 本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-09-27
+
+### 新增
+- **管理面板卡片**（`contributes.cards` + `sdk.routes`）：面板内置三段式交互，不再只靠对话
+  - **安装段**：显示 gh 安装状态与版本；未安装时提供「一键安装」，安装过程实时回显日志，装完自动重新探测
+  - **登录段**：已登录显示账号 / 主机 / 协议 / scope，并提供「退出登录」（走 `gh auth logout`，只删本地凭据）；未登录时按钮变成「登录」，点击后**左侧显示可复制的一次性代码，同时自动打开浏览器授权页**，面板每 2.5 秒轮询，授权成功自动切换为已登录状态
+  - **刷新**：手动重读状态；活动中的安装/授权会自动轮询
+- **`github_cli_install` 工具**：Windows 走 `winget install --id GitHub.cli`，macOS 走 `brew install gh`；供助手在用户没有 gh 时主动补装
+- **`github_cli_logout` 工具**：退出本地登录（`gh auth logout`），执行前应向用户确认
+- 新增两项界面能力声明：`app/ui.clipboard-write`（复制一次性代码）、`app/ui.open-external`（打开授权页）
+
+### 变更
+- `github_cli_status` 改用 `gh auth status --json hosts` 读取结构化状态，未安装 gh 时明确提示可一键安装
+- gh 可执行文件缓存：安装或退出后自动失效，下次调用重新探测
+
+### 说明
+- 面板样式自绘并沿用 Hana 主题令牌（`--bg-card` / `--accent` / `--font-ui` 等），随宿主主题自适应，不额外打包第三方组件库
+- UI 冒烟校验（`--smoke`）需要独立 Electron 运行时；未配置 `HANA_APP_ELECTRON` 时该步跳过，静态校验与打包校验均通过
+
 ## [0.1.2] - 2026-09-27
 
 ### 新增
@@ -15,7 +34,7 @@
 ## [0.1.1] - 2026-09-27
 
 ### 修复
-- 设备码登录：适配 gh 2.101 的输出格式（`One-time code (XXXX-XXXX) copied to clipboard`），旧正则只匹配 `one-time code: XXXX-XXXX` 导致解析失败。首个真实用户（作者本人的助手）上传前发现并修复
+- 设备码登录：适配 gh 2.101 的输出格式（`One-time code (XXXX-XXXX) copied to clipboard`），旧正则只匹配 `one-time code: XXXX-XXXX` 导致解析失败
 - 状态诊断：去掉误传的 `-h` 参数（gh 的 `-h` 是 `--hostname` 需要带值，导致 auth status 直接报错）
 
 ### 变更
