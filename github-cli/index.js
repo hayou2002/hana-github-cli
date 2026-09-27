@@ -7,7 +7,7 @@ import path from "node:path";
 
 const execFileAsync = promisify(execFile);
 
-const VERSION = "0.2.0";
+const VERSION = "0.2.1";
 const DEFAULT_TIMEOUT_MS = 60_000;
 const MAX_TIMEOUT_MS = 180_000;
 const MAX_OUTPUT_CHARS = 60_000;

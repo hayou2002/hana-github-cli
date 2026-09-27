@@ -2,7 +2,7 @@
   "manifestVersion": 2,
   "id": "github-cli",
   "name": "GitHub CLI",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "entry": "index.js",
   "capabilities": [
     "app/tools.expose-to-model",

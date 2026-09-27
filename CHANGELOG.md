@@ -1,6 +1,14 @@
 # 更新日志
 
-本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式，版本号遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
+本项目遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/) 格式。
+
+> **版本规范**：自 0.2.0 起，每个小改动递增第三位（0.2.0 → 0.2.1 → 0.2.2 …），只有成组的新功能才动第二位。
+
+## [0.2.1] - 2026-09-27
+
+### 修复
+- **面板复制一次性代码失效**：`hana.clipboard.writeText` 在部分 iframe 环境下不生效，改为三级兜底——宿主剪贴板（短超时）→ `navigator.clipboard` → `execCommand('copy')`；三级都失败时自动弹出可全选输入框，提示手动 Ctrl+C
+- 安装流程图未标明面板入口：现在明确画出“卡片中心 → 应用”标签（真实入口位置）
 
 ## [0.2.0] - 2026-09-27
 
@@ -22,7 +30,6 @@
 - UI 冒烟校验（`--smoke`）需要独立 Electron 运行时；未配置 `HANA_APP_ELECTRON` 时该步跳过，静态校验与打包校验均通过
 
 ## [0.1.2] - 2026-09-27
-
 ### 新增
 - **登录全程引导**：`github_cli_login` 返回结构化三步引导（授权页→输码→点 Authorize），并提醒助手在用户回复前不重复调用、完成后主动验证登录态；失败信息分类为「网络瞬时干扰可重跑」与「需人工介入」
 - **子进程代理环境变量清洗**：起 `gh` 前统一清除 `HTTP_PROXY`/`HTTPS_PROXY`/`WS_PROXY`/`WSS_PROXY`/`ALL_PROXY` 等残留变量，落实「GitHub 直连」原则。背景：本机环境树残留死 SOCKS 变量，曾把设备码请求坑到超时

@@ -63,6 +63,68 @@ async function api(path, init) {
   return { status: res.status, data };
 }
 
+/**
+ * 三级兜底复制：宿主剪贴板 → 浏览器原生 → execCommand。
+ * 任一层成功即返回方式名，全失败返回 null。
+ */
+async function copyText(text) {
+  const value = String(text ?? "");
+  if (!value) return null;
+  // 1) Hana 宿主剪贴板（需 app/ui.clipboard-write）；短超时，避免按钮卡死
+  try {
+    await hana.clipboard.writeText(value, { timeoutMs: 2000 });
+    return "host";
+  } catch {
+    /* 落到下一层 */
+  }
+  // 2) 浏览器原生异步剪贴板
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(value);
+      return "navigator";
+    }
+  } catch {
+    /* 落到下一层 */
+  }
+  // 3) 兜底：临时 textarea + execCommand（旧内核/受限 iframe 常用）
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = value;
+    ta.setAttribute("readonly", "");
+    ta.style.position = "fixed";
+    ta.style.top = "-1000px";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    ta.setSelectionRange(0, value.length);
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    if (ok) return "execCommand";
+  } catch {
+    /* 全部失败 */
+  }
+  return null;
+}
+
+/** 兜底提示：把代码放进可全选输入框，让用户手动 Ctrl+C。 */
+function showManualCopy(text) {
+  els.note.hidden = false;
+  els.note.textContent = "自动复制被拦截，请按 Ctrl+C 复制：";
+  let input = document.getElementById("manual-copy");
+  if (!input) {
+    input = document.createElement("input");
+    input.id = "manual-copy";
+    input.readOnly = true;
+    input.className = "manual-copy";
+    els.note.after(input);
+  }
+  input.value = text;
+  input.hidden = false;
+  input.focus();
+  input.select();
+}
+
 function renderInstall(state) {
   els.installSec.hidden = false;
   const gh = state.gh || {};
@@ -211,17 +273,19 @@ async function startLogin() {
 els.codeChip.addEventListener("click", async () => {
   const code = els.codeText.textContent.trim();
   if (!code) return;
-  try {
-    await hana.clipboard.writeText(code);
+  const tip = els.codeChip.querySelector(".code-chip__tip");
+  const how = await copyText(code);
+  if (how) {
     els.codeChip.dataset.copied = "1";
-    els.codeChip.querySelector(".code-chip__tip").textContent = "已复制";
+    if (tip) tip.textContent = "已复制";
+    const manual = document.getElementById("manual-copy");
+    if (manual) manual.hidden = true;
     setTimeout(() => {
       els.codeChip.dataset.copied = "0";
-      els.codeChip.querySelector(".code-chip__tip").textContent = "复制";
-    }, 1600);
-  } catch {
-    els.note.hidden = false;
-    els.note.textContent = "复制失败，请手动选中代码复制。";
+      if (tip) tip.textContent = "复制";
+    }, 1800);
+  } else {
+    showManualCopy(code);
   }
 });
 
