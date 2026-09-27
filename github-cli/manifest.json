@@ -2,20 +2,19 @@
   "manifestVersion": 2,
   "id": "github-cli",
   "name": "GitHub CLI",
-  "version": "0.2.2",
+  "version": "0.2.8",
   "entry": "index.js",
   "capabilities": [
     "app/tools.expose-to-model",
     "app/process.spawn",
-    "app/ui.clipboard-write",
-    "app/ui.open-external"
+    "app/ui.clipboard-write"
   ],
   "contributes": {
     "cards": [
       {
         "id": "panel",
         "title": "GitHub CLI 管理面板",
-        "description": "安装/登录/退出 GitHub CLI 的一体化面板：显示 gh 安装状态与登录账号，未登录时提供一键登录（可复制一次性代码并自动打开授权页）。",
+        "description": "安装/升级/卸载 GitHub CLI 与登录管理的一体化面板：显示 gh 安装状态与登录账号，未登录时一键登录（可复制一次性代码并自动打开授权页）。",
         "route": "/panel.html",
         "face": { "image": "assets/cover.svg" }
       }

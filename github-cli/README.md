@@ -7,36 +7,33 @@
 
 ```
 manifest.json      v2 清单：能力声明 + 管理面板卡片
-index.js           入口：五个工具 + 面板后端路由
+index.js           入口：五个工具 + 面板后端路由 + 子进程编排
+lib/gh-core.js     纯逻辑层（环境清洗 / 版本解析比对 / 登录态解析 / 设备码 / 镜像排序 / 提权命令），可单测
 assets/icon.svg    应用图标
 ui/
   panel.html       管理面板页面
-  assets/panel.js  面板交互（单一 state + render）
+  assets/panel.js  面板交互（单一 state + render，确认条也是状态）
   assets/panel.css 面板样式（沿用 Hana 主题令牌）
-  assets/cover.svg 卡片封面（contributes.cards[].face.image）
+  assets/cover.svg 卡片封面（深色圆盘 + Octocat 剪影）
   assets/sdk.js    官方客户端桥 SDK（本地打包，运行时免依赖）
 sdk/               官方服务端 App SDK（本地打包，运行时免依赖）
 ```
 
-## 后端（index.js）结构
+> 单元测试在仓库根的 `tests/gh-core.test.mjs`（不随包分发）：`node tests/gh-core.test.mjs`。
 
-按职责分区，便于定位：
+## 四条硬约束
 
-1. **常量** —— 版本、超时、限制、下载页
-2. **环境与路径** —— `cleanEnv()`（剔除残留代理变量）、gh 候选路径、`clip()`、`openInBrowser()`
-3. **结果封装** —— `text()` / `fail()` / `combine()`
-4. **进程执行** —— 统一执行器 `run()`、`resolveGh()`、`gh()`、`describe()`
-5. **状态读取** —— `readEnvironment()`：一次拿到「是否安装 + 版本 + 登录账号」
-6. **设备码流程** —— `startDeviceFlow()` / `activeDeviceFlow()` / `loginWithToken()`
-7. **安装管理** —— `startInstall()`（幂等，共享 Promise）
-8. **工具注册** —— status / run / install / login / logout
-9. **面板路由** —— `GET /status`、`POST /install|/login/device|/logout|/open-device`
-
-### 两条硬约束
-
+- **主题跟随**：面板 iframe 的 URL 带 `hana-css`（当前主题完整 CSS）与 `hana-palette-{light,dark}-css`（auto 模式）；`panel.html` 读这些参数动态挂载主题。CSS 一律按 **`--hana-*`（custom 主题） → 旧主题名 → 默认值** 取值，否则自定义主题下不跟随
+- **运行时目录必须落在 `ctx.dataDir`**：宿主以 Node 权限模型（`--permission --allow-fs-write=<dataDir>`）启动 App，写 `os.tmpdir()` 等外部路径会被 `ERR_ACCESS_DENIED` 拒绝。需要落盘时（下载安装包、缓存）一律写 `sdk.dataDir`
+- **iframe 沙箱**：面板跑在沙箱 iframe 里，`window.confirm/alert` 被禁——需要确认时用面板内确认卡；打开外部链接由**后端**完成（`cmd /c start`），不用 `hana.external.open`
 - **不做 shell 展开**：所有子进程走 `execFile`，参数以数组传递；`github_cli_run` 额外拒绝含 `<>|;&$`` ` 的参数
 - **GitHub 直连**：起子进程前用 `cleanEnv()` 清除 `HTTP_PROXY` 等 8 个代理变量
 - **设备码进程必须存活**：拿到码后 `unref()` 但不 kill，gh 需持续轮询才能接住用户的授权
+- **MSI 装/卸必须提权**：走 `Start-Process -Verb RunAs` 触发 UAC，否则静默安装必然失败
+
+## 后端（index.js）结构
+
+按职责分区：常量 → 进程执行 → 状态 → 设备码 → 安装引擎 → 工具 → 路由。平台细节都在 `lib/gh-core.js`（纯函数，可单测）。
 
 ## 前端（ui/）结构
 

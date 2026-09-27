@@ -4,6 +4,16 @@
 
 装好之后，你的 AI 助手就能自己查登录状态、跑 `gh` 命令、引导你完成 GitHub 授权——不用再手动来回切换终端。本仓库的第一次真实任务，就是用这个 App 把它自己上传到了 GitHub。
 
+## 特色功能
+
+这几条是这个 App 真正花功夫做成的地方，也是它和“随便包一层 gh”的区别：
+
+- **🎨 面板跟随宿主主题**——面板读宿主通过 iframe URL 下发的主题参数（`hana-css`），CSS 走 `--hana-*` → 旧主题名 → 默认值 的取值链。切到任意主题（包括自定义），面板的底色、主按钮、圆角跟着一起变，不会停在硬编码的橙色。
+- **🧭 多源测速选源**——安装包下载前先对四条线路并发测速（GitHub 直连 + 三个加速镜像），挑最快的；当前源失败自动换下一个，全部失败再回退 winget。
+- **🔐 提权安装**——Windows 上 MSI 静默安装/卸载必须管理员权限。面板里点一下会弹 UAC，确认后才执行（不用你手敲命令）。
+- **🧩 一次性代码开箱即用**——点「登录」自动拉起后台轮询进程、解析出 `XXXX-XXXX` 一次性代码、并自动打开授权页；代码点一下就复制（三级兜底）。
+- **🧱 安全执行边界**——所有子进程参数以数组直传（不走 shell），含 `<>|;&$` 等元字符的参数直接拒绝，没有通配/管道/变量展开。
+
 ## 特性一览
 
 - 🖥 **管理面板卡片**：安装 / 登录 / 退出三段式交互。点「登录」→ 左侧出现可复制的一次性代码并自动弹出授权页；授权成功后面板自动变已登录；已登录时按钮变「退出登录」
@@ -47,14 +57,15 @@ https://github.com/hayou2002/hana-github-cli
 
 把 `github-cli/` 整个目录复制到 `<HANA_HOME>/apps/`，Hana 会在扩展面板的「应用」分类里列出待批准条目，确认后加载。
 
-声明的权限共四条：
+声明的权限共三条：
 
 | 权限 | 用途 |
 |---|---|
 | `app/tools.expose-to-model` | 把五个工具注册给 AI 模型调用 |
 | `app/process.spawn` | 以子进程方式执行 `gh` 命令 |
 | `app/ui.clipboard-write` | 面板里一键复制一次性登录代码 |
-| `app/ui.open-external` | 面板里打开 GitHub 授权页 |
+
+> 浏览器打开授权页不由面板发起（iframe 沙箱里 `hana.external.open` 不可靠），而是走**后端** `cmd /c start`，所以不需要 `open-external` 能力。
 
 ## 管理面板
 
@@ -75,7 +86,12 @@ https://github.com/hayou2002/hana-github-cli
 
 ### `github_cli_install`
 
-无参数。在本机安装 GitHub CLI：Windows 走 `winget install --id GitHub.cli`，macOS 走 `brew install gh`。装完自动重新探测。
+带三种模式（`mode: install | upgrade | uninstall`）：
+
+- 会先对四条线路并发测速（直连 + 三个加速镜像），选最快源下载**官方 MSI** 并提权静默安装（弹 UAC）
+- 当前源下载失败自动换下一个，全部失败回退 `winget`（Windows）/ `brew`（macOS）
+- `upgrade` 时若已是最新版本会直接反馈、不做多余下载
+- 下载缓存落在 App 自己的数据目录（`ctx.dataDir`），每次安装前清掉旧包
 
 ### `github_cli_run`
 
@@ -99,6 +115,8 @@ https://github.com/hayou2002/hana-github-cli
 退出本地登录（`gh auth logout`，只删本地凭据，不吊销远端令牌）。
 
 ## 使用方法
+
+![使用方式：点面板按钮 或 直接跟助手说](docs/images/usage.svg)
 
 ### 第一次上手（四步）
 
@@ -141,22 +159,32 @@ https://github.com/hayou2002/hana-github-cli
 ```
 ├── github-cli/            # App 源码（可直接放入 <HANA_HOME>/apps/）
 │   ├── manifest.json      # v2 清单（工具 + 管理面板卡片）
-│   ├── index.js           # 五个工具 + 面板后端路由
+│   ├── index.js           # 五个工具 + 面板后端路由 + 子进程编排
+│   ├── lib/gh-core.js     # 纯逻辑层（环境清洗/版本比对/登录解析/提权命令），可单测
 │   ├── assets/icon.svg    # 应用图标（Octocat 风格重绘）
 │   ├── ui/                # 管理面板卡片（panel.html + 样式/脚本）
 │   └── sdk/               # 本地打包的 Hana App SDK（运行时免依赖）
+├── tests/                 # 纯逻辑层单测（不随包分发）
+├── docs/images/           # README 配图
 ├── dist-extensions/       # 打包产物：安装 ZIP + 市场 entry.json
 ├── CHANGELOG.md
 └── README.md
 ```
+
+> 分层约定：`lib/gh-core.js` 不依赖宿主运行时，可被 Node 直接 import 做单测；`index.js` 只负责与宿主 SDK 打交道（工具注册、面板路由、子进程编排）。
 
 ## 开发
 
 修改 `github-cli/index.js` 或 `ui/` 后，用 hana-app-creator 技能链校验打包：
 
 ```bash
-# 静态校验（清单、资源、路由）+ 打包校验
+# 纯逻辑层单测
+node tests/gh-core.test.mjs
+
+# 静态校验（清单、资源、路由）
 node scripts/validate_app.mjs --dir github-cli --json
+
+# 打包 + 对产物再校验
 node scripts/pack_app.mjs --dir github-cli --publisher "你的名字" --out ./dist-extensions
 node scripts/validate_app.mjs --archive dist-extensions/app-github-cli-x.y.z.zip --json
 ```
